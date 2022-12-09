@@ -1,3 +1,4 @@
+
 #include "spx2022.h"
 #include "frtos_cmd.h"
 
@@ -114,7 +115,6 @@ char s1[20];
     xprintf("Spymovil %s %s %s %s \r\n" , HW_MODELO, FRTOS_VERSION, FW_REV, FW_DATE);
     
 }
-
 //------------------------------------------------------------------------------
 static void cmdHelpFunction(void)
 {
@@ -125,14 +125,14 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("-write:\r\n"));
         xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos string}\r\n"));
         xprintf_P( PSTR("  rtc YYMMDDhhmm\r\n"));
-        xprintf_P( PSTR("  rele {on/off}, vsensor {on/off}\r\n"));
+        xprintf_P( PSTR("  rele {on/off}, vsensors420 {on/off}\r\n"));
         xprintf_P( PSTR("  ina {confValue}\r\n"));
         xprintf_P( PSTR("  rs485a {string}, rs485b {string}\r\n"));
         
     }  else if ( !strcmp_P( strupr(argv[1]), PSTR("READ"))) {
 		xprintf_P( PSTR("-read:\r\n"));
         xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos} {lenght}\r\n"));
-        xprintf_P( PSTR("  avrid,rtc\r\n"));
+        xprintf_P( PSTR("  avrid,rtc {long,short}\r\n"));
         xprintf_P( PSTR("  cnt {0,1}\r\n"));
         xprintf_P( PSTR("  ina {conf|chXshv|chXbusv|mfid|dieid}\r\n"));
         xprintf_P( PSTR("  rs485a, rs485b\r\n"));
@@ -143,10 +143,10 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  dlgid\r\n"));
         xprintf_P( PSTR("  default\r\n"));
         xprintf_P( PSTR("  save\r\n"));
-        xprintf_P( PSTR("  timerpoll\r\n"));
+        xprintf_P( PSTR("  comms {rs485, nbiot}, timerpoll\r\n"));
         xprintf_P( PSTR("  ainput {0..%d} aname imin imax mmin mmax offset\r\n"),( NRO_ANALOG_CHANNELS - 1 ) );
         xprintf_P( PSTR("  counter {0..%d} cname magPP modo(PULSO/CAUDAL)\r\n"), ( NRO_COUNTER_CHANNELS - 1 ) );
-        xprintf_P( PSTR("  debug {analog,counters,none} {true/false}\r\n"));
+        xprintf_P( PSTR("  debug {analog,counters,comms,none} {true/false}\r\n"));
         
     	// HELP RESET
 	} else if (!strcmp_P( strupr(argv[1]), PSTR("RESET"))) {
@@ -172,7 +172,7 @@ static void cmdHelpFunction(void)
 //------------------------------------------------------------------------------
 static void cmdReadFunction(void)
 {
-
+    
     FRTOS_CMD_makeArgv();
 
     // AINPUT
@@ -211,16 +211,27 @@ static void cmdReadFunction(void)
     // EE
 	// read ee address length
 	if (!strcmp_P( strupr(argv[1]), PSTR("EE")) ) {
-		 EE_test_read ( argv[2], argv[3] );
+		EE_test_read ( argv[2], argv[3] );
 		return;
 	}
     
     // RTC
-	// read rtc
-	if (!strcmp_P( strupr(argv[1]), PSTR("RTC")) ) {
-		RTC_read_time();
-		return;
-	}
+	// read rtc { long | short }
+    if (!strcmp_P( strupr(argv[1]), PSTR("RTC")) ) {
+        if (!strcmp_P( strupr(argv[2]), PSTR("LONG")) ) {
+            RTC_read_time(FORMAT_LONG);
+            pv_snprintfP_OK();
+            return;
+        }
+        if (!strcmp_P( strupr(argv[2]), PSTR("SHORT")) ) {
+            RTC_read_time(FORMAT_SHORT);
+            pv_snprintfP_OK();
+            return;
+        }
+        pv_snprintfP_ERR();
+        return;
+    }
+        
     
     // NVMEE
 	// read nvmee address length
@@ -235,6 +246,16 @@ static void cmdReadFunction(void)
 		RTCSRAM_test_read ( argv[2], argv[3] );
 		return;
 	}
+
+	// AVRID
+	// read avrid
+	if (!strcmp_P( strupr(argv[1]), PSTR("AVRID"))) {
+		//nvm_read_print_id();
+        xprintf_P(PSTR("ID: %s\r\n"), NVM_id2str() );
+        xprintf_P(PSTR("SIGNATURE: %s\r\n"), NVM_signature2str() );
+		return;
+	}
+    
     
     // CMD NOT FOUND
 	xprintf("ERROR\r\nCMD NOT DEFINED\r\n\0");
@@ -259,13 +280,21 @@ static void cmdStatusFunction(void)
 
     // https://stackoverflow.com/questions/12844117/printing-defined-constants
     
-    xprintf("Spymovil %s %s TYPE=%s, %s %s \r\n" , HW_MODELO, FRTOS_VERSION, FW_TYPE, FW_REV, FW_DATE);
+    xprintf("Spymovil %s %s TYPE=%s, VER=%s %s \r\n" , HW_MODELO, FRTOS_VERSION, FW_TYPE, FW_REV, FW_DATE);
      
     xprintf_P(PSTR("Config:\r\n"));
+    xprintf_P(PSTR(" date: %s\r\n"), RTC_logprint(FORMAT_LONG));
     xprintf_P(PSTR(" dlgid: %s\r\n"), systemConf.dlgid );
     xprintf_P(PSTR(" timerpoll=%d\r\n"), systemConf.timerpoll);
+    
+    WAN_print_configuration();
     ainputs_print_configuration( systemConf.ainputs_conf);
     counters_config_print( systemConf.counters_conf);
+    
+    xprintf_P(PSTR("Values:\r\n"));
+    xprintf_P(PSTR(" Rele: %d\r\n"), systemVars.rele_output);
+    xprintf_P(PSTR(" Frame: "));
+    xprint_terminal(XPRINT_NO_HEADER);
     
 }
 //------------------------------------------------------------------------------
@@ -300,15 +329,15 @@ static void cmdWriteFunction(void)
 		return;
 	}
     
-    // write VSENSOR on/off
-	if (!strcmp_P( strupr(argv[1]), PSTR("VSENSOR")) ) {
+    // write VSENSORS420 on/off
+	if (!strcmp_P( strupr(argv[1]), PSTR("VSENSORS420")) ) {
         if (!strcmp_P( strupr(argv[2]), PSTR("ON")) ) {
-            SET_VSENSOR();
+            SET_VSENSORS420();
             pv_snprintfP_OK();
             return;
         }
         if (!strcmp_P( strupr(argv[2]), PSTR("OFF")) ) {
-            CLEAR_VSENSOR();
+            CLEAR_VSENSORS420();
             pv_snprintfP_OK();
             return;
         }
@@ -374,6 +403,13 @@ bool retS = false;
     
     FRTOS_CMD_makeArgv();
      
+    // COMMS
+    // comms {rs485, nbiot}
+    if (!strcmp_P( strupr(argv[1]), PSTR("COMMS\0"))) {
+        config_wan_port(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+        
     // DLGID
 	if (!strcmp_P( strupr(argv[1]), PSTR("DLGID\0"))) {
 		if ( argv[2] == NULL ) {
@@ -437,7 +473,7 @@ bool retS = false;
 	}
     
     // DEBUG
-    // config debug (ainput, counter) (true,false)
+    // config debug (ainput, counter, comms) (true,false)
     if (!strcmp_P( strupr(argv[1]), PSTR("DEBUG")) ) {
         config_debug( argv[2], argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;

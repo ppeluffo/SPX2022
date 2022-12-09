@@ -53,8 +53,9 @@ int main(void) {
     xHandle_tkAin = xTaskCreateStatic( tkAinputs, "AIN", tkAin_STACK_SIZE, (void *)1, tkAin_TASK_PRIORITY, tkAin_Buffer, &tkAin_Buffer_Ptr );
     xHandle_tkCnt = xTaskCreateStatic( tkCounters, "CNT", tkCnt_STACK_SIZE, (void *)1, tkCnt_TASK_PRIORITY, tkCnt_Buffer, &tkCnt_Buffer_Ptr );
     xHandle_tkSys = xTaskCreateStatic( tkSystem, "SYS", tkSys_STACK_SIZE, (void *)1, tkSys_TASK_PRIORITY, tkSys_Buffer, &tkSys_Buffer_Ptr );
-    xHandle_tkCommsA = xTaskCreateStatic( tkCommsA, "COMMSA", tkCommsA_STACK_SIZE, (void *)1, tkCommsA_TASK_PRIORITY, tkCommsA_Buffer, &tkCommsA_Buffer_Ptr );
-    xHandle_tkCommsB = xTaskCreateStatic( tkCommsB, "COMMSB", tkCommsB_STACK_SIZE, (void *)1, tkCommsB_TASK_PRIORITY, tkCommsB_Buffer, &tkCommsB_Buffer_Ptr );
+    xHandle_tkRS485A = xTaskCreateStatic( tkRS485A, "COMMSA", tkRS485A_STACK_SIZE, (void *)1, tkRS485A_TASK_PRIORITY, tkRS485A_Buffer, &tkRS485A_Buffer_Ptr );
+    xHandle_tkRS485B = xTaskCreateStatic( tkRS485B, "COMMSB", tkRS485B_STACK_SIZE, (void *)1, tkRS485B_TASK_PRIORITY, tkRS485B_Buffer, &tkRS485B_Buffer_Ptr );
+    xHandle_tkWAN = xTaskCreateStatic( tkWAN, "WAN", tkWAN_STACK_SIZE, (void *)1, tkWAN_TASK_PRIORITY, tkWAN_Buffer, &tkWAN_Buffer_Ptr );
    
     /* Arranco el RTOS. */
 	vTaskStartScheduler();

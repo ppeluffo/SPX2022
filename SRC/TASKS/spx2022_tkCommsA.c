@@ -3,7 +3,7 @@
 
 
 //------------------------------------------------------------------------------
-void tkCommsA(void * pvParameters)
+void tkRS485A(void * pvParameters)
 {
 
 	// Esta es la primer tarea que arranca.
@@ -17,7 +17,7 @@ void tkCommsA(void * pvParameters)
 
 uint8_t c = 0;
     
-    xprintf_P(PSTR("Starting tkCommsA..\r\n" ));
+    xprintf_P(PSTR("Starting tkRS485A..\r\n" ));
     
 	// loop
 	for( ;; )

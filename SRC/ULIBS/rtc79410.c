@@ -19,7 +19,7 @@ char datetime[32];
 //------------------------------------------------------------------------------------
 // Funciones de uso general
 //------------------------------------------------------------------------------------
-char *RTC_logprint( void )
+char *RTC_logprint( bool format_long )
 {
 
 RtcTimeType_t rtc;
@@ -31,11 +31,15 @@ bool retS;
 		return(NULL);
 	} else {
 		memset(datetime, '\0', sizeof(datetime));
-		RTC_rtc2str( datetime, &rtc);
+        if ( format_long ) {
+            RTC_rtc2str( datetime, &rtc, FORMAT_LONG );
+        } else {
+            RTC_rtc2str( datetime, &rtc, FORMAT_SHORT );
+        }
 		return ( (char *)&datetime);
 	}
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int16_t RTC_read( uint16_t rdAddress, char *data, uint8_t length )
 {
 
@@ -56,7 +60,7 @@ quit:
 	return( rcode );
 
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 int16_t RTC_write( uint16_t wrAddress, char *data, uint8_t length )
 {
 
@@ -75,7 +79,7 @@ int16_t rcode = 0;
 	return( rcode );
 
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void RTC_init(void)
 {
 
@@ -96,7 +100,7 @@ int16_t xBytes = 0;
 
 	// Si esta reseteado la reconfiguro
 	if ( rtc.year > 100 )  {
-		RTC_str2rtc("1901010000", &rtc);
+		RTC_str2rtc("2201010000", &rtc);
 		xBytes = RTC_write_dtime(&rtc);
 		if ( xBytes == -1 )
 			xprintf_P(PSTR("ERROR: I2C:RTC:RTC_start\r\n"));
@@ -196,12 +200,15 @@ int16_t rdBytes  = 0;
 
 }
 //------------------------------------------------------------------------------------
-void RTC_rtc2str(char *str, RtcTimeType_t *rtc)
+void RTC_rtc2str(char *str, RtcTimeType_t *rtc, bool format_long )
 {
 	// Convierte los datos del RTC a un string con formato DD/MM/YYYY hh:mm:ss
 
-	snprintf( str, 32 ,"%02d/%02d/%04d %02d:%02d:%02d",rtc->day, rtc->month, ( 2000 + rtc->year ), rtc->hour,rtc->min, rtc->sec );
-
+    if ( format_long ) {
+        snprintf( str, 32 ,"%02d/%02d/%04d %02d:%02d:%02d",rtc->day, rtc->month, ( 2000 + rtc->year ), rtc->hour,rtc->min, rtc->sec );
+    } else {
+        snprintf( str, 32 ,"%02d:%02d:%02d", rtc->hour,rtc->min, rtc->sec );   
+    }
 }
 //------------------------------------------------------------------------------------
 bool RTC_str2rtc(char *str, RtcTimeType_t *rtc)
@@ -316,7 +323,7 @@ uint32_t secs_dlg, secs_new;
 
 }
 //------------------------------------------------------------------------------------
-void RTC_read_time( void )
+void RTC_read_time( bool format_long )
 {
 
 char datetime[32] = { 0 };
@@ -329,7 +336,7 @@ int16_t rdBytes = 0;
 	if ( rdBytes == -1 ) {
 		xprintf_P(PSTR("ERROR: I2C:RTC:pv_cmd_rwRTC\r\n"));
 	} else {
-		RTC_rtc2str( datetime, &rtc);
+		RTC_rtc2str( datetime, &rtc, format_long);
 		xprintf_P( PSTR("%s\r\n"), datetime );
 	}
 }

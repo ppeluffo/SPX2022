@@ -33,30 +33,16 @@ extern "C" {
     
 void OCOUT_init(void);
     
-
-// Salida Control de VSENSOR.
-       
-#define VSENSOR_PORT         PORTD
-#define VSENSOR              1
-#define VSENSOR_PIN_bm       PIN1_bm
-#define VSENSOR_PIN_bp       PIN1_bp
-
-#define SET_VSENSOR()       ( VSENSOR_PORT.OUT |= VSENSOR_PIN_bm )
-#define CLEAR_VSENSOR()     ( VSENSOR_PORT.OUT &= ~VSENSOR_PIN_bm )
-    
-void VSENSOR_init(void);
-
-
 // Salida de prender/apagar sensores 4-20
-#define SENSORS420_PORT         PORTD
-#define SENSORS420              1
-#define SENSORS420_PIN_bm       PIN1_bm
-#define SENSORS420_PIN_bp       PIN1_bp
+#define VSENSORS420_PORT         PORTD
+#define VSENSORS420              1
+#define VSENSORS420_PIN_bm       PIN1_bm
+#define VSENSORS420_PIN_bp       PIN1_bp
 
-#define SET_SENSORS420()       ( SENSORS420_PORT.OUT |= SENSORS420_PIN_bm )
-#define CLEAR_SENSORS420()     ( SENSORS420_PORT.OUT &= ~SENSORS420_PIN_bm )
+#define SET_VSENSORS420()       ( VSENSORS420_PORT.OUT |= VSENSORS420_PIN_bm )
+#define CLEAR_VSENSORS420()     ( VSENSORS420_PORT.OUT &= ~VSENSORS420_PIN_bm )
 
-void SENSORS420_init(void);
+void VSENSORS420_init(void);
 
 #define RTS_RS485A_PORT         PORTC
 #define RTS_RS485A              2

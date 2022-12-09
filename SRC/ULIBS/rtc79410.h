@@ -19,6 +19,10 @@
 #include "stdint.h"
 #include "i2c.h"
 #include "xprintf.h"
+#include "stdbool.h"
+
+#define FORMAT_LONG true
+#define FORMAT_SHORT false
 
 //--------------------------------------------------------------------------------
 // API START
@@ -49,14 +53,14 @@ void RTC_init(void);
 bool RTC_read_dtime(RtcTimeType_t *rtc);
 bool RTC_write_dtime(RtcTimeType_t *rtc);
 bool RTC_write_time( char *stime );
-void RTC_read_time( void );
-char *RTC_logprint( void );
+void RTC_read_time(  bool format_long );
+char *RTC_logprint( bool format_long );
 bool RTC_has_drift(RtcTimeType_t *rtc_new, uint16_t max_drift );
 
 // API END
 //--------------------------------------------------------------------------------
 
-void RTC_rtc2str(char *str, RtcTimeType_t *rtc);
+void RTC_rtc2str(char *str, RtcTimeType_t *rtc, bool format_long );
 bool RTC_str2rtc(char *str, RtcTimeType_t *rtc);
 
 // Direccion del bus I2C donde esta el RTC79410

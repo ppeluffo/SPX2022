@@ -54,4 +54,8 @@ void nvm_read_print_id(void);
 void NVMEE_test_write( char *addr, char *str );
 void NVMEE_test_read( char *addr, char *size );
 
+char *NVM_id2str(void);
+char *NVM_signature2str( void );
+
+
 #endif /* SRC_SPX_LIBS_L_NVM_L_NVM_H_ */

@@ -7,6 +7,8 @@
 
 #include "nvm.h"
 
+char nvm_str_buffer[38];
+
 //------------------------------------------------------------------------------
 uint16_t nvm_read_signature_sum(void)
 {
@@ -35,6 +37,42 @@ uint16_t signature_sum=0;
     signature_sum += avr_id.sernum15;
     
     return(signature_sum);
+}
+//------------------------------------------------------------------------------
+char *NVM_id2str(void)
+{
+    /*
+     * Retorna el ID en el string dst
+     */
+
+nvm_device_serial_id_t avr_id;
+uint8_t fptr = 0;
+
+    memset(nvm_str_buffer, '\0', sizeof(nvm_str_buffer));
+    NVM_ID_read( &avr_id );
+    fptr += sprintf_P( (char *)&nvm_str_buffer[fptr], PSTR("0x%02x%02x%02x"), avr_id.devid0, avr_id.devid1, avr_id.devid2);  
+    return( &nvm_str_buffer[0] );
+}
+//------------------------------------------------------------------------------
+char *NVM_signature2str( void )
+{
+    /*
+     * Retorna el SIGNATURE en el string dst
+     */
+
+nvm_device_serial_id_t avr_id;
+uint8_t fptr = 0;
+
+    memset(nvm_str_buffer, '\0', sizeof(nvm_str_buffer));
+    NVM_ID_read( &avr_id );  
+    
+    fptr = 0;
+    fptr += sprintf_P( (char *)&nvm_str_buffer[fptr], PSTR("%02x%02x%02x%02x"), avr_id.sernum0, avr_id.sernum1, avr_id.sernum2, avr_id.sernum3);
+    fptr += sprintf_P( (char *)&nvm_str_buffer[fptr], PSTR("%02x%02x%02x%02x"), avr_id.sernum4, avr_id.sernum5, avr_id.sernum6, avr_id.sernum7);
+    fptr += sprintf_P( (char *)&nvm_str_buffer[fptr] ,PSTR("%02x%02x%02x%02x"), avr_id.sernum8, avr_id.sernum9, avr_id.sernum10, avr_id.sernum11);
+    fptr += sprintf_P( (char *)&nvm_str_buffer[fptr], PSTR("%02x%02x%02x%02x"), avr_id.sernum12, avr_id.sernum13, avr_id.sernum14, avr_id.sernum15);
+    
+    return( &nvm_str_buffer[0] );
 }
 //------------------------------------------------------------------------------
 void nvm_read_print_id(void)

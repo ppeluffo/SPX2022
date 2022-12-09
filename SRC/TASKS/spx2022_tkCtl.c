@@ -32,7 +32,11 @@ void tkCtl(void * pvParameters)
     }
        
     WDG_INIT();
-             
+    
+    systemVars.rele_output = false;
+    
+    RTC_init();
+
     // Por ultimo habilito a todas las otras tareas a arrancar
     starting_flag = true;
     

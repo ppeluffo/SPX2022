@@ -118,12 +118,12 @@ void ainputs_print_configuration(ainputs_conf_t *ainputs_conf)
     
 uint8_t channel = 0;
 
-    xprintf_P(PSTR(" Ainputs:\r\n"));
-    xprintf_P(PSTR("  debug: "));
+    xprintf_P(PSTR("Ainputs:\r\n"));
+    xprintf_P(PSTR(" debug: "));
     f_debug_ainputs ? xprintf_P(PSTR("true\r\n")) : xprintf_P(PSTR("false\r\n"));
 
 	for ( channel = 0; channel < NRO_ANALOG_CHANNELS; channel++) {
-		xprintf_P( PSTR("  a%d: [%d-%d mA/ %.02f,%.02f | %.03f | %s]\r\n"),
+		xprintf_P( PSTR(" a%d: [%d-%d mA/ %.02f,%.02f | %.03f | %s]\r\n"),
 			channel,
 			ainputs_conf[channel].imin,
 			ainputs_conf[channel].imax,
@@ -269,7 +269,7 @@ void ainputs_prender_sensores(void)
     ainputs_awake();
 	//
 	if ( ! sensores_prendidos ) {
-		SET_SENSORS420();
+		SET_VSENSORS420();
 		sensores_prendidos = true;
 		// Normalmente espero 1s de settle time que esta bien para los sensores
 		// pero cuando hay un caudalimetro de corriente, necesita casi 5s
@@ -281,7 +281,7 @@ void ainputs_prender_sensores(void)
 void ainputs_apagar_sensores(void)
 {
 
-	CLEAR_SENSORS420();
+	CLEAR_VSENSORS420();
 	sensores_prendidos = false;
 	ainputs_sleep();
 

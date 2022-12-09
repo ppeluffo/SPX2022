@@ -77,18 +77,18 @@ void counters_config_print( counter_conf_t *counters_conf )
     
 uint8_t i = 0;
 
-    xprintf_P(PSTR(" Counters:\r\n"));
-    xprintf_P(PSTR("  debug: "));
+    xprintf_P(PSTR("Counters:\r\n"));
+    xprintf_P(PSTR(" debug: "));
     f_debug_counters ? xprintf_P(PSTR("true\r\n")) : xprintf_P(PSTR("false\r\n"));
     
 	for ( i = 0; i < NRO_COUNTER_CHANNELS; i++) {
-        xprintf_P( PSTR("  c%d: [%s,magpp=%.03f,"), i, counters_conf[i].name, counters_conf[i].magpp );
-       
+        
+        xprintf_P( PSTR(" c%d: [%s,magpp=%.03f,"), i, counters_conf[i].name, counters_conf[i].magpp );
         if ( counters_conf[i].modo_medida == CAUDAL ) {
-			xprintf_P(PSTR("CAUDAL]\r\n"));
-		} else {
-			xprintf_P(PSTR("PULSO]\r\n"));
-		}
+            xprintf_P(PSTR("CAUDAL]\r\n"));
+        } else {
+            xprintf_P(PSTR("PULSO]\r\n"));
+        }
 	}
 
             

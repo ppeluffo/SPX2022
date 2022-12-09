@@ -8,17 +8,13 @@
 
 #include "spx2022.h"
 
-struct {
-    float l_ainputs[NRO_ANALOG_CHANNELS];
-    float l_counters[NRO_COUNTER_CHANNELS];
-} dataRcd;
+dataRcd_s dataRcd;
 
 //------------------------------------------------------------------------------
 void tkSystem(void * pvParameters)
 {
 
 TickType_t xLastWakeTime = 0;
-uint8_t channel;
 
 	while (! starting_flag )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
@@ -43,33 +39,49 @@ uint8_t channel;
         
         xSemaphoreGive( sem_SYSVars );
         
-        // Imprimo
-        // Header:
-        xprintf_P(PSTR("ID:%s;TYPE:%s;VER:%s;"), systemConf.dlgid, FW_TYPE, FW_REV);
-        xfprintf_P( fdRS485B, PSTR("ID:%s;TYPE:%s;VER:%s;"), systemConf.dlgid, FW_TYPE, FW_REV);
+        // Transmito frame de datos por la WAN
+        WAN_xmit_data_frame(&dataRcd);
         
-        // Analog Channels:
-        for ( channel=0; channel < NRO_ANALOG_CHANNELS; channel++) {
-            if ( channel == 0 ) {
-                xprintf_P(PSTR("%s:%0.3f"), systemConf.ainputs_conf[channel].name, dataRcd.l_ainputs[channel]);
-                xfprintf_P( fdRS485B, PSTR("%s:%0.3f"), systemConf.ainputs_conf[channel].name, dataRcd.l_ainputs[channel]);
-            } else {
-                xprintf_P(PSTR(";%s:%0.3f"), systemConf.ainputs_conf[channel].name, dataRcd.l_ainputs[channel]);
-                xfprintf_P( fdRS485B, PSTR(";%s:%0.3f"), systemConf.ainputs_conf[channel].name, dataRcd.l_ainputs[channel]);
-            }
+        // Imprimo localmente en pantalla
+        xprint_terminal(XPRINT_HEADER);
             
-        }
-        
-        // Counter Channels:
-        for ( channel=0; channel < NRO_COUNTER_CHANNELS; channel++) {
-            xprintf_P(PSTR(";%s:%0.3f"), systemConf.counters_conf[channel].name, dataRcd.l_counters[channel]);
-            xfprintf_P( fdRS485B, PSTR(";%s:%0.3f"), systemConf.counters_conf[channel].name, dataRcd.l_counters[channel]);
-        }
-        xprintf_P(PSTR("\r\n"));
-        xfprintf_P( fdRS485B, PSTR("\r\n"));
-                
         kick_wdt(SYS_WDG_bp);
            
 	}
+}
+//------------------------------------------------------------------------------
+void xprint_terminal(bool print_header)
+{
+uint8_t channel;
+bool start = true;
+
+    if (print_header) {
+        xprintf_P( PSTR("(%s) ID:%s;TYPE:%s;VER:%s;"), RTC_logprint(FORMAT_SHORT), systemConf.dlgid, FW_TYPE, FW_REV);
+    }
+    
+    // Analog Channels:
+    for ( channel=0; channel < NRO_ANALOG_CHANNELS; channel++) {
+        if ( strcmp ( systemConf.ainputs_conf[channel].name, "X" ) != 0 ) {
+            if ( start ) {
+                xprintf_P( PSTR("%s:%0.2f"), systemConf.ainputs_conf[channel].name, dataRcd.l_ainputs[channel]);
+                start = false;
+            } else {
+                xprintf_P( PSTR(";%s:%0.2f"), systemConf.ainputs_conf[channel].name, dataRcd.l_ainputs[channel]);
+            }
+        }
+    }
+        
+    // Counter Channels:
+    for ( channel=0; channel < NRO_COUNTER_CHANNELS; channel++) {
+        if ( strcmp ( systemConf.counters_conf[channel].name, "X" ) != 0 ) {
+            if ( start ) {
+                xprintf_P( PSTR("%s:%0.3f"), systemConf.counters_conf[channel].name, dataRcd.l_counters[channel]);
+                start = false;
+            } else {
+                xprintf_P( PSTR(";%s:%0.3f"), systemConf.counters_conf[channel].name, dataRcd.l_counters[channel]);
+            }
+        }
+    }
+    xprintf_P( PSTR("\r\n"));
 }
 //------------------------------------------------------------------------------
