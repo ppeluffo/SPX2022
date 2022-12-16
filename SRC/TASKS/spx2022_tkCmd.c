@@ -29,7 +29,7 @@ void tkCmd(void * pvParameters)
 	//vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
 
 uint8_t c = 0;
-uint16_t sleep_timeout;
+//uint16_t sleep_timeout;
 
     FRTOS_CMD_init();
 
@@ -45,7 +45,7 @@ uint16_t sleep_timeout;
     xprintf_P(PSTR("Starting tkCmd..\r\n" ));
     xprintf_P(PSTR("Spymovil %s %s %s %s \r\n") , HW_MODELO, FRTOS_VERSION, FW_REV, FW_DATE);
     
-    sleep_timeout = 500; // Espero hasta 5 secs
+    //sleep_timeout = 500; // Espero hasta 5 secs
     
 	// loop
 	for( ;; )
@@ -57,7 +57,7 @@ uint16_t sleep_timeout;
 		//while ( frtos_read( fdTERM, (char *)&c, 1 ) == 1 ) {
         while ( xgetc( (char *)&c ) == 1 ) {
             FRTOS_CMD_process(c);
-            sleep_timeout = 500;
+            //sleep_timeout = 500;
         }
         
         vTaskDelay( ( TickType_t)( 10 / portTICK_PERIOD_MS ) );
@@ -143,7 +143,8 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  dlgid\r\n"));
         xprintf_P( PSTR("  default\r\n"));
         xprintf_P( PSTR("  save\r\n"));
-        xprintf_P( PSTR("  comms {rs485, nbiot}, timerpoll\r\n"));
+        xprintf_P( PSTR("  comms {rs485, nbiot}, timerpoll, timerdial\r\n"));
+        xprintf_P( PSTR("  pwrmodo {continuo,discreto,mixto}, pwron {hhmm}, pwroff {hhmm}\r\n"));
         xprintf_P( PSTR("  ainput {0..%d} aname imin imax mmin mmax offset\r\n"),( NRO_ANALOG_CHANNELS - 1 ) );
         xprintf_P( PSTR("  counter {0..%d} cname magPP modo(PULSO/CAUDAL)\r\n"), ( NRO_COUNTER_CHANNELS - 1 ) );
         xprintf_P( PSTR("  debug {analog,counters,comms,none} {true/false}\r\n"));
@@ -286,6 +287,9 @@ static void cmdStatusFunction(void)
     xprintf_P(PSTR(" date: %s\r\n"), RTC_logprint(FORMAT_LONG));
     xprintf_P(PSTR(" dlgid: %s\r\n"), systemConf.dlgid );
     xprintf_P(PSTR(" timerpoll=%d\r\n"), systemConf.timerpoll);
+    xprintf_P(PSTR(" timerdial=%d\r\n"), systemConf.timerdial);
+    
+    print_pwr_configuration();
     
     WAN_print_configuration();
     ainputs_print_configuration( systemConf.ainputs_conf);
@@ -403,6 +407,25 @@ bool retS = false;
     
     FRTOS_CMD_makeArgv();
      
+    // POWER
+    // pwr_modo {continuo,discreto,mixto}
+    if (!strcmp_P( strupr(argv[1]), PSTR("PWRMODO\0"))) {
+        config_pwrmodo(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+    
+    // pwr_on {hhmm}
+     if (!strcmp_P( strupr(argv[1]), PSTR("PWRON\0"))) {
+        config_pwron(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}  
+    
+    // pwr_off {hhmm}
+     if (!strcmp_P( strupr(argv[1]), PSTR("PWROFF\0"))) {
+        config_pwroff(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}   
+    
     // COMMS
     // comms {rs485, nbiot}
     if (!strcmp_P( strupr(argv[1]), PSTR("COMMS\0"))) {
@@ -451,8 +474,14 @@ bool retS = false;
     // TIMERPOLL
     // config timerpoll val
 	if (!strcmp_P( strupr(argv[1]), PSTR("TIMERPOLL")) ) {
-		systemConf.timerpoll = atoi(argv[2]);
-        pv_snprintfP_OK();
+        config_timerpoll(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+    
+    // TIMERDIAL
+    // config timerdial val
+	if (!strcmp_P( strupr(argv[1]), PSTR("TIMERDIAL")) ) {
+		config_timerdial(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;
 	}
     

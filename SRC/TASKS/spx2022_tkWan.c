@@ -49,22 +49,22 @@ void tkWAN(void * pvParameters)
         vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
 
     sem_WAN = xSemaphoreCreateMutexStatic( &WAN_xMutexBuffer );
-    lBchar_CreateStatic ( &wan_lbuffer, wan_buffer, WAN_BUFFER_SIZE );
+    lBchar_CreateStatic ( &wan_lbuffer, wan_buffer, WAN_RX_BUFFER_SIZE );
 
     xprintf_P(PSTR("Starting tkWAN..\r\n" ));
     vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
     
-    wan_state = WAN_RECOVER_ID;
+    wan_state = WAN_INIT;
     
 	// loop
 	for( ;; )
 	{
         switch(wan_state) {
-            case WAN_RECOVER_ID:
-                wan_state_recover_id();
-                break;
             case WAN_INIT:
                 wan_state_init();
+                break;
+            case WAN_RECOVER_ID:
+                wan_state_recover_id();
                 break;
             case WAN_CNF_BASE:
                 wan_state_cnf_base();
@@ -96,7 +96,7 @@ static bool wan_state_init(void)
     if (f_debug_comms)
         xprintf_P(PSTR("WAN state INIT.\r\n"));
     
-    wan_state = WAN_CNF_BASE;
+    wan_state = WAN_RECOVER_ID;
     return(true);
 }
 //------------------------------------------------------------------------------
@@ -155,7 +155,7 @@ exit_:
                 
     xSemaphoreGive( sem_WAN );
         
-    wan_state = WAN_INIT;
+    wan_state = WAN_CNF_BASE;
     return(true);
 }
 //------------------------------------------------------------------------------
@@ -170,7 +170,6 @@ static bool wan_state_cnf_base(void)
      */
     
 uint8_t tryes = 0;
-uint8_t j;
 uint8_t hash = 0;
 uint8_t fptr;
 char *p;
@@ -182,13 +181,44 @@ uint8_t timeout = 0;
     
     // Calculo el hash de la configuracion base
     memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
-    j = 0;
-    j += sprintf_P( (char *)&hash_buffer[j], PSTR("[TIMERPOLL:%03d]"), systemConf.timerpoll );
+    sprintf_P( (char *)&hash_buffer, PSTR("[TIMERPOLL:%03d]"), systemConf.timerpoll );
     p = (char *)hash_buffer;
-	// Mientras no sea NULL calculo el checksum deol buffer
-	while (*p != '\0') {
+    while (*p != '\0') {
 		hash = u_hash(hash, *p++);
 	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
+    sprintf_P( (char *)&hash_buffer, PSTR("[TIMERDIAL:%03d]"), systemConf.timerdial );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );    
+    //
+    memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
+    sprintf_P( (char *)&hash_buffer, PSTR("[PWRMODO:%d]"), systemConf.pwr_modo );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
+    sprintf_P( (char *)&hash_buffer, PSTR("[PWRON:%04d]"), systemConf.pwr_hhmm_on );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
+    sprintf_P( (char *)&hash_buffer, PSTR("[PWROFF:%04d]"), systemConf.pwr_hhmm_off );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
     
     // Armo el buffer
     while ( xSemaphoreTake( sem_WAN, MSTOTAKEWANSEMPH ) != pdTRUE )
@@ -196,7 +226,7 @@ uint8_t timeout = 0;
     
     memset(wan_tx_buffer, '\0', WAN_TX_BUFFER_SIZE);
     fptr = 0;
-    fptr = sprintf_P( (char*)&wan_tx_buffer[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:CONFIG_BASE;CKS:0x%02X"), systemConf.dlgid, FW_TYPE, FW_REV, hash );
+    fptr = sprintf_P( (char*)&wan_tx_buffer[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:CONF_BASE;UID:%s;HASH:0x%02X"), systemConf.dlgid, FW_TYPE, FW_REV, NVM_signature2str(), hash );
 
     // Proceso
     while (tryes++ < 2) {
@@ -247,14 +277,15 @@ uint8_t timeout = 0;
         memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
         j = 0;
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("[A%d:%s,"), i, systemConf.ainputs_conf[i].name );
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d,%d"), systemConf.ainputs_conf[i].imin, systemConf.ainputs_conf[i].imax );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d,%d,"), systemConf.ainputs_conf[i].imin, systemConf.ainputs_conf[i].imax );
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f,%.02f,"), systemConf.ainputs_conf[i].mmin, systemConf.ainputs_conf[i].mmax );
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f]"), systemConf.ainputs_conf[i].offset);
-        
+     
         p = (char *)hash_buffer;
         while (*p != '\0') {
             hash = u_hash(hash, *p++);
         }
+        //xprintf_P(PSTR("HASH_AIN:<%s>, hash=%d\r\n"),hash_buffer, hash );
     }
     
     // Armo el buffer
@@ -263,7 +294,7 @@ uint8_t timeout = 0;
     
     memset(wan_tx_buffer, '\0', WAN_TX_BUFFER_SIZE);
     fptr = 0;
-    fptr = sprintf_P( (char*)&wan_tx_buffer[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:CONFIG_AINPUTS;CKS:0x%02X"), systemConf.dlgid, FW_TYPE, FW_REV, hash );
+    fptr = sprintf_P( (char*)&wan_tx_buffer[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:CONF_AINPUTS;HASH:0x%02X"), systemConf.dlgid, FW_TYPE, FW_REV, hash );
 
     // Proceso
     while (tryes++ < 2) {
@@ -287,8 +318,10 @@ uint8_t timeout = 0;
     
 exit_:
                 
-    xSemaphoreGive( sem_WAN );    
+    xSemaphoreGive( sem_WAN ); 
+
     wan_state = WAN_CNF_COUNTERS;
+    
     return(true);
 }
 //------------------------------------------------------------------------------
@@ -315,11 +348,12 @@ uint8_t timeout = 0;
         j = 0;
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("[C%d:%s,"), i, systemConf.counters_conf[i].name );
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.03f,%d]"), systemConf.counters_conf[i].magpp, systemConf.counters_conf[i].modo_medida );
-    
+            
         p = (char *)hash_buffer;
         while (*p != '\0') {
             hash = u_hash(hash, *p++);
         }
+        //xprintf_P(PSTR("HASH_CNT:<%s>, hash=%d\r\n"),hash_buffer, hash );
     }
     
     // Armo el buffer
@@ -328,7 +362,7 @@ uint8_t timeout = 0;
     
     memset(wan_tx_buffer, '\0', WAN_TX_BUFFER_SIZE);
     fptr = 0;
-    fptr = sprintf_P( (char*)&wan_tx_buffer[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:CONFIG_COUNTERS;CKS:0x%02X"), systemConf.dlgid, FW_TYPE, FW_REV, hash );
+    fptr = sprintf_P( (char*)&wan_tx_buffer[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:CONF_COUNTERS;HASH:0x%02X"), systemConf.dlgid, FW_TYPE, FW_REV, hash );
 
     // Proceso
     while (tryes++ < 2) {
@@ -361,6 +395,7 @@ static bool wan_state_data(void)
 {
     /*
      * Funciones de transmision de datos
+     * No cambio de estado.
      */
     
  static bool entry = true;
@@ -395,13 +430,13 @@ char *p;
             if  ( strstr( p, "CLASS:RECOVER") != NULL ) {
                 wan_process_recover_rsp(p);
               
-            } else if ( strstr( p, "CLASS:BASE") != NULL ) {
+            } else if ( strstr( p, "CLASS:CONF_BASE") != NULL ) {
                 wan_process_base_rsp(p);
                 
-            } else if ( strstr( p, "CLASS:AINPUTS") != NULL ) {
+            } else if ( strstr( p, "CLASS:CONF_AINPUTS") != NULL ) {
                 wan_process_ainputs_rsp(p);
                 
-            } else if ( strstr( p, "CLASS:COUNTERS") != NULL ) {
+            } else if ( strstr( p, "CLASS:CONF_COUNTERS") != NULL ) {
                 wan_process_counters_rsp(p);
                 
             } else if ( strstr( p, "CLASS:DATA") != NULL ) {
@@ -419,7 +454,7 @@ static bool wan_process_recover_rsp(char *p)
     /*
      * Extraemos el DLGID del frame y lo reconfiguramos
      * RXFRAME: <html><body><h1>CLASS:RECOVER;DLGID:xxxx</h1></body></html>
-     * 
+     *          <html><body><h1>CLASS:RECOVER;DLGID:DEFAULT</h1></body></html>
      */
     
 char localStr[32] = { 0 };
@@ -449,7 +484,8 @@ static bool wan_process_base_rsp(char *p)
 {
      /*
      * Envia el TPOLL
-     * RXFRAME: <html><body><h1>CLASS:BASE;TPOLL:xxxx</h1></body></html>
+     * RXFRAME: <html><body><h1>CLASS:CONF_BASE;TPOLL:60;TDIAL:0;PWRMODO:MIXTO;PWRON:2330;PWROFF:0630</h1></body></html>                        
+     *                          CLASS:CONF_BASE;CONFIG:OK
      * 
      */
     
@@ -459,18 +495,60 @@ char *token = NULL;
 char *delim = ",;:=><";
 char *ts = NULL;
 
+    if  ( strstr( p, "CONFIG:OK") != NULL ) {
+       goto exit_;
+    }
+                
 	memset(localStr,'\0',sizeof(localStr));
-	ts = strstr( p, "BASE;");
+	ts = strstr( p, "TPOLL:");
 	strncpy(localStr, ts, sizeof(localStr));
 	stringp = localStr;
-	token = strsep(&stringp,delim);	    // BASE
+	token = strsep(&stringp,delim);	 	// TPOLL
+	token = strsep(&stringp,delim);	 	// timerpoll
+    config_timerpoll(token);
+    xprintf_P( PSTR("BASE_CONF: reconfig TIMERPOLL to %d\r\n\0"), systemConf.timerpoll );
+    //
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "TDIAL:");
+	strncpy(localStr, ts, sizeof(localStr));
+	stringp = localStr;
 	token = strsep(&stringp,delim);	 	// TDIAL
 	token = strsep(&stringp,delim);	 	// timerdial
-    systemConf.timerpoll = atoi(token);
+    config_timerdial(token);
+    xprintf_P( PSTR("BASE_CONF: reconfig TIMERDIAL to %d\r\n\0"), systemConf.timerdial );
+    //
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "PWRMODO:");
+	strncpy(localStr, ts, sizeof(localStr));
+	stringp = localStr;
+	token = strsep(&stringp,delim);	 	// PWRMODO
+	token = strsep(&stringp,delim);	 	// pwrmodo_string
+    config_pwrmodo(token);
+    xprintf_P( PSTR("BASE_CONF: reconfig PWRMODO to %s\r\n\0"), token );
+    //
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "PWRON:");
+	strncpy(localStr, ts, sizeof(localStr));
+	stringp = localStr;
+	token = strsep(&stringp,delim);	 	// PWRON
+	token = strsep(&stringp,delim);	 	// pwron
+    config_pwron(token);
+    xprintf_P( PSTR("BASE_CONF: reconfig PWRON to %d\r\n\0"), systemConf.pwr_hhmm_on );
+    //
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "PWROFF:");
+	strncpy(localStr, ts, sizeof(localStr));
+	stringp = localStr;
+	token = strsep(&stringp,delim);	 	// PWROFF
+	token = strsep(&stringp,delim);	 	// pwroff
+    config_pwroff(token);
+    xprintf_P( PSTR("BASE_CONF: reconfig PWROFF to %d\r\n\0"), systemConf.pwr_hhmm_off );
+    //    
 	// Copio el dlgid recibido al systemConf.
 	save_config_in_NVM();
-	xprintf_P( PSTR("BASE_CONF: reconfig TIMERPOLL to %d\r\n\0"), systemConf.timerpoll );
     
+exit_:
+                
     f_process_base = true;
     return(true);    
 }
@@ -479,8 +557,8 @@ static bool wan_process_ainputs_rsp(char *p)
 {
     /*
      * Procesa la configuracion de los canales analogicos
-     * RXFRAME: <html><body><h1>CLASS:AINPUTS;A0:PA,4,20,0.0,10.0;A1:X,4,20,0.0,10.0;A2:X,4,20,0.0,10.0;</h1></body></html>
-     * 
+     * RXFRAME: <html><body><h1>CLASS:CONF_AINPUTS;A0:pA,4,20,0.0,10.0,0.0;A1:pB,4,20,0.0,10.0,0.0;A2:X,4,20,0.0,10.0,0.0;</h1></body></html>
+     *                          CLASS:CONF_AINPUTS;CONFIG:OK
      */
     
 char *ts = NULL;
@@ -496,6 +574,10 @@ char *delim = ",;:=><";
 bool save_flag = false;
 uint8_t ch;
 char str_base[8];
+
+    if  ( strstr( p, "CONFIG:OK") != NULL ) {
+       goto exit_;
+    }
 
 	// A?
 	for (ch=0; ch < NRO_ANALOG_CHANNELS; ch++ ) {
@@ -524,6 +606,8 @@ char str_base[8];
     if (save_flag)
         save_config_in_NVM();
 
+exit_:
+                
     f_process_ainputs = true;
     return(true);
 }
@@ -532,7 +616,7 @@ static bool wan_process_counters_rsp(char *p)
 {
     /*
      * Procesa la configuracion de los canales contadores
-     * RXFRAME: <html><body><h1>CLASS:COUNTERS;C0:CNT0,1.0,CAUDAL;C1:X,1.0,PULSOS;</h1></body></html>
+     * RXFRAME: <html><body><h1>CLASS:CONF_COUNTERS;C0:q0,0.01,CAUDAL;C1:X,0.0,CAUDAL;</h1></body></html>
      * 
      */
 
@@ -546,6 +630,10 @@ char *delim = ",;:=><";
 bool save_flag = false;
 uint8_t ch;
 char str_base[8];
+
+    if  ( strstr( p, "CONFIG:OK") != NULL ) {
+       goto exit_;
+    }
 
 	// C?
 	for (ch=0; ch < NRO_COUNTER_CHANNELS; ch++ ) {
@@ -572,6 +660,8 @@ char str_base[8];
 		save_config_in_NVM();
 	}
 
+exit_:
+                
     f_process_counters = true;
 	return(true);
 
@@ -585,8 +675,6 @@ static bool wan_process_data_rsp(char *p)
      */
     
 char localStr[32] = { 0 };
-char rtcStr[12];
-RtcTimeType_t rtc_s;
 char *ts = NULL;
 char *stringp = NULL;
 char *token = NULL;
@@ -600,20 +688,15 @@ char *delim = ",;:=><";
         stringp = localStr;
         token = strsep(&stringp,delim);			// CLOCK
         token = strsep(&stringp,delim);			// 1910120345
-        memset(rtcStr, '\0', sizeof(rtcStr));
-        memcpy(rtcStr,token, sizeof(rtcStr));	// token apunta al comienzo del string con la hora
 
         // Error en el string recibido
-        if ( strlen(rtcStr) < 10 ) {
+        if ( strlen(token) < 10 ) {
             // Hay un error en el string que tiene la fecha.
             // No lo reconfiguro
-            xprintf_P(PSTR("DATA: data_resync_clock ERROR:[%s]\r\n\0"), rtcStr );
+            xprintf_P(PSTR("DATA: data_resync_clock ERROR:[%s]\r\n"), token );
             return(false);
         } else {
-            // Convierto el string YYMMDDHHMM a RTC.
-            memset( &rtc_s, '\0', sizeof(rtc_s) );
-            RTC_str2rtc(rtcStr, &rtc_s);
-            data_resync_clock( &rtc_s, false );
+            data_resync_clock( token, false );
         }
         
     }
@@ -750,4 +833,3 @@ static void wan_xmit_out(bool debug_flag )
     
 }
 //------------------------------------------------------------------------------
-

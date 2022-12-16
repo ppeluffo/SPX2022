@@ -89,7 +89,14 @@ void config_default(void)
 
     systemConf.wan_port = WAN_RS485B;
     memcpy(systemConf.dlgid, "DEFAULT\0", sizeof(systemConf.dlgid));
-    systemConf.timerpoll = 30;
+    
+    systemConf.timerpoll = 60;
+    systemConf.timerdial = 0;
+    
+    systemConf.pwr_modo = PWR_CONTINUO;
+    systemConf.pwr_hhmm_on = 2330;
+    systemConf.pwr_hhmm_off = 630;
+ 
     ainputs_config_defaults(systemConf.ainputs_conf);
     counters_config_defaults(systemConf.counters_conf);
   
@@ -215,7 +222,7 @@ bool config_wan_port(char *comms_type)
     
 }
 //------------------------------------------------------------------------------
-uint8_t u_hash(uint8_t checksum, char ch )
+uint8_t u_hash(uint8_t seed, char ch )
 {
 	/*
 	 * Funcion de hash de pearson modificada.
@@ -229,13 +236,12 @@ uint8_t h_val = 0;
 uint8_t ord;
 
 	ord = (int)ch;
-	h_entry = checksum ^ ord;
+	h_entry = seed ^ ord;
 	h_val = (PGM_P)pgm_read_byte_far( &(hash_table[h_entry]));
 	return(h_val);
-
 }
 //------------------------------------------------------------------------------
-void data_resync_clock( RtcTimeType_t *rtc_s, bool force_adjust)
+void data_resync_clock( char *str_time, bool force_adjust)
 {
 	/*
 	 * Ajusta el clock interno de acuerdo al valor de rtc_s
@@ -248,20 +254,23 @@ void data_resync_clock( RtcTimeType_t *rtc_s, bool force_adjust)
 
 
 float diff_seconds;
-RtcTimeType_t rtc_l;
+RtcTimeType_t rtc_l, rtc_wan;
 int8_t xBytes = 0;
-char rtcStr[12];
-
-    // Convierto el rtc a formato YYMMDDHHMM
-    RTC_rtc2str(rtcStr, rtc_s, true );
-        
+   
+    // Convierto el string YYMMDDHHMM a RTC.
+    //xprintf_P(PSTR("DATA: DEBUG CLOCK2\r\n") );
+    memset( &rtc_wan, '\0', sizeof(rtc_wan) );        
+    RTC_str2rtc( str_time, &rtc_wan);
+    //xprintf_P(PSTR("DATA: DEBUG CLOCK3\r\n") );
+            
+            
 	if ( force_adjust ) {
 		// Fuerzo el ajuste.( al comienzo )
-		xBytes = RTC_write_dtime( rtc_s);		// Grabo el RTC
+		xBytes = RTC_write_dtime(&rtc_wan);		// Grabo el RTC
 		if ( xBytes == -1 ) {
-			xprintf_P(PSTR("ERROR: CLOCK: I2C:RTC:pv_process_server_clock\r\n\0"));
+			xprintf_P(PSTR("ERROR: CLOCK: I2C:RTC:pv_process_server_clock\r\n"));
 		} else {
-			xprintf_P( PSTR("CLOCK: Update rtc to: %s\r\n\0"), rtcStr );
+			xprintf_P( PSTR("CLOCK: Update rtc.\r\n") );
 		}
 		return;
 	}
@@ -271,18 +280,113 @@ char rtcStr[12];
 	// Asumo yy,mm,dd iguales
 	// Leo la hora actual del datalogger
 	RTC_read_dtime( &rtc_l);
-	diff_seconds = abs( rtc_l.hour * 3600 + rtc_l.min * 60 + rtc_l.sec - ( rtc_s->hour * 3600 + rtc_s->min * 60 + rtc_s->sec));
+	diff_seconds = abs( rtc_l.hour * 3600 + rtc_l.min * 60 + rtc_l.sec - ( rtc_wan.hour * 3600 + rtc_wan.min * 60 + rtc_wan.sec));
 	//xprintf_P( PSTR("COMMS: rtc diff=%.01f\r\n"), diff_seconds );
 
 	if ( diff_seconds > 90 ) {
 		// Ajusto
-		xBytes = RTC_write_dtime(rtc_s);		// Grabo el RTC
+		xBytes = RTC_write_dtime(&rtc_wan);		// Grabo el RTC
 		if ( xBytes == -1 ) {
-			xprintf_P(PSTR("ERROR: CLOCK: I2C:RTC:pv_process_server_clock\r\n\0"));
+			xprintf_P(PSTR("ERROR: CLOCK: I2C:RTC:pv_process_server_clock\r\n"));
 		} else {
-			xprintf_P( PSTR("CLOCK: Update rtc to: %s\r\n\0"), rtcStr );
+			xprintf_P( PSTR("CLOCK: Update rtc\r\n") );
 		}
 		return;
 	}
 }
 //------------------------------------------------------------------------------
+bool config_timerdial ( char *s_timerdial )
+{
+	// El timer dial puede ser 0 si vamos a trabajar en modo continuo o mayor a
+	// 15 minutos.
+	// Es una variable de 32 bits para almacenar los segundos de 24hs.
+
+uint16_t l_timerdial;
+    
+    l_timerdial = atoi(s_timerdial);
+    if ( (l_timerdial > 0) && (l_timerdial < TDIAL_MIN_DISCRETO ) ) {
+        xprintf_P( PSTR("TDIAL warn: continuo TDIAL=0, discreto TDIAL >= 900)\r\n"));
+        l_timerdial = TDIAL_MIN_DISCRETO;
+    }
+    
+	systemConf.timerdial = atoi(s_timerdial);
+	return(true);
+}
+//------------------------------------------------------------------------------
+bool config_timerpoll ( char *s_timerpoll )
+{
+	// Configura el tiempo de poleo.
+	// Se utiliza desde el modo comando como desde el modo online
+	// El tiempo de poleo debe estar entre 15s y 3600s
+
+
+	systemConf.timerpoll = atoi(s_timerpoll);
+
+	if ( systemConf.timerpoll < 15 )
+		systemConf.timerpoll = 15;
+
+	if ( systemConf.timerpoll > 3600 )
+		systemConf.timerpoll = 300;
+
+	return(true);
+}
+//------------------------------------------------------------------------------
+bool config_pwrmodo ( char *s_pwrmodo )
+{
+    if ((strcmp_P( strupr(s_pwrmodo), PSTR("CONTINUO")) == 0) ) {
+        systemConf.pwr_modo = PWR_CONTINUO;
+        return(true);
+    }
+    
+    if ((strcmp_P( strupr(s_pwrmodo), PSTR("DISCRETO")) == 0) ) {
+        systemConf.pwr_modo = PWR_DISCRETO;
+        return(true);
+    }
+    
+    if ((strcmp_P( strupr(s_pwrmodo), PSTR("MIXTO")) == 0) ) {
+        systemConf.pwr_modo = PWR_MIXTO;
+        return(true);
+    }
+    
+    return(false);
+}
+//------------------------------------------------------------------------------
+bool config_pwron ( char *s_pwron )
+{
+    systemConf.pwr_hhmm_on = atoi(s_pwron);
+    return(true);
+}
+//------------------------------------------------------------------------------
+bool config_pwroff ( char *s_pwroff )
+{
+    systemConf.pwr_hhmm_off = atoi(s_pwroff);
+    return(true);
+}
+//------------------------------------------------------------------------------
+void print_pwr_configuration(void)
+{
+    /*
+     * Muestra en pantalla el modo de energia configurado
+     */
+    
+uint16_t hh, mm;
+    
+    switch( systemConf.pwr_modo ) {
+        case PWR_CONTINUO:
+            xprintf_P(PSTR(" pwr_modo: continuo\r\n"));
+            break;
+        case PWR_DISCRETO:
+            xprintf_P(PSTR(" pwr_modo: discreto (%d s)\r\n"), systemConf.timerdial);
+            break;
+        case PWR_MIXTO:
+            xprintf_P(PSTR(" pwr_modo: mixto\r\n"));
+            hh = (uint8_t)(systemConf.pwr_hhmm_on / 100);
+            mm = (uint8_t)(systemConf.pwr_hhmm_on % 100);
+            xprintf_P(PSTR("           continuo -> %02d:%02d\r\n"), hh,mm);
+            
+            hh = (uint8_t)(systemConf.pwr_hhmm_off / 100);
+            mm = (uint8_t)(systemConf.pwr_hhmm_off % 100);
+            xprintf_P(PSTR("           discreto -> %02d:%02d\r\n"), hh,mm);
+            break;
+    }
+}

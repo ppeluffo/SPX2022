@@ -223,21 +223,28 @@ char tmp[3] = { 0 };
 		return(false);
 
 	memcpy(dateTimeStr, str, 10);
+    //xprintf_P(PSTR("DEBUG1 [%s]\r\n"),dateTimeStr );
+    
 	// year
 	tmp[0] = dateTimeStr[0]; tmp[1] = dateTimeStr[1];	tmp[2] = '\0';
 	rtc->year = atoi(tmp);
+    //xprintf_P(PSTR("DEBUG2 [%s]\r\n"),tmp );
 	// month
 	tmp[0] = dateTimeStr[2]; tmp[1] = dateTimeStr[3];	tmp[2] = '\0';
 	rtc->month = atoi(tmp);
+    //xprintf_P(PSTR("DEBUG3 [%s]\r\n"),tmp );
 	// day of month
 	tmp[0] = dateTimeStr[4]; tmp[1] = dateTimeStr[5];	tmp[2] = '\0';
 	rtc->day = atoi(tmp);
+    //xprintf_P(PSTR("DEBUG4 [%s]\r\n"),tmp );
 	// hour
 	tmp[0] = dateTimeStr[6]; tmp[1] = dateTimeStr[7];	tmp[2] = '\0';
 	rtc->hour = atoi(tmp);
+    //xprintf_P(PSTR("DEBUG5 [%s]\r\n"),tmp );
 	// minute
 	tmp[0] = dateTimeStr[8]; tmp[1] = dateTimeStr[9];	tmp[2] = '\0';
 	rtc->min = atoi(tmp);
+    //xprintf_P(PSTR("DEBUG6 [%s]\r\n"),tmp );
 	// seconds siempre en 0.
 	rtc->sec = 0;
 

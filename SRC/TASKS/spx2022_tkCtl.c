@@ -13,6 +13,7 @@
 #define TKCTL_DELAY_S	5
 
 void sys_watchdog_check(void);
+void sys_daily_reset(void);
 
 //------------------------------------------------------------------------------
 void tkCtl(void * pvParameters)
@@ -45,6 +46,8 @@ void tkCtl(void * pvParameters)
 		vTaskDelay( ( TickType_t)( 1000 * TKCTL_DELAY_S / portTICK_PERIOD_MS ) );
         led_flash();
         sys_watchdog_check();
+        sys_daily_reset();
+        
 	}
 }
 //------------------------------------------------------------------------------
@@ -78,5 +81,24 @@ static uint8_t wdg_count = 0;
         wdt_reset();
         WDG_INIT();
     }
+}
+//------------------------------------------------------------------------------
+void sys_daily_reset(void)
+{
+	// Todos los dias debo resetearme para restaturar automaticamente posibles
+	// problemas.
+	// Se invoca 1 vez por minuto ( 60s ).
+
+static uint32_t ticks_to_reset = 86400 / TKCTL_DELAY_S ; // ticks en 1 dia.
+
+	//xprintf_P( PSTR("DEBUG dailyReset..\r\n\0"));
+	while ( --ticks_to_reset > 0 ) {
+		return;
+	}
+
+	xprintf_P( PSTR("Daily Reset !!\r\n\0") );
+    vTaskDelay( ( TickType_t)( 2000 / portTICK_PERIOD_MS ) );
+    reset();
+    
 }
 //------------------------------------------------------------------------------

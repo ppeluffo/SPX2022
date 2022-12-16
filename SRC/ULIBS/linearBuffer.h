@@ -30,8 +30,8 @@ extern "C" {
 typedef struct struct_lBuffer
 {
 	char *buff;		///< the physical memory address where the buffer is stored
-	uint8_t size;		///< the allocated size of the buffer
-	uint8_t ptr;         ///< the index into the buffer where the data starts
+	uint16_t size;		///< the allocated size of the buffer
+	uint16_t ptr;         ///< the index into the buffer where the data starts
 } lBuffer_s;
 
 void lBchar_CreateStatic ( lBuffer_s *lB, char *storage_area, uint16_t size  );

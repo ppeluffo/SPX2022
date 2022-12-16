@@ -85,7 +85,7 @@ extern "C" {
 #include "counters.h"
 
 #define FW_REV "1.0.0"
-#define FW_DATE "@ 20221209"
+#define FW_DATE "@ 20221214"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR2"
@@ -155,6 +155,8 @@ void reset(void);
 #define XPRINT_HEADER       true
 #define XPRINT_NO_HEADER    false
 
+#define TDIAL_MIN_DISCRETO  900
+
 typedef struct {
     float l_ainputs[NRO_ANALOG_CHANNELS];
     float l_counters[NRO_COUNTER_CHANNELS];
@@ -162,18 +164,24 @@ typedef struct {
 
 void kick_wdt( uint8_t bit_pos);
 
-uint8_t u_hash(uint8_t checksum, char ch );
+uint8_t u_hash(uint8_t seed, char ch );
 void config_default(void);
 bool config_debug( char *tipo, char *valor);
 bool save_config_in_NVM(void);
 bool load_config_from_NVM(void);
 bool config_wan_port(char *comms_type);
 void xprint_terminal(bool print_header);
-void data_resync_clock( RtcTimeType_t *rtc_s, bool force_adjust);
+void data_resync_clock( char *str_time, bool force_adjust);
+bool config_timerdial ( char *s_timerdial );
+bool config_timerpoll ( char *s_timerpoll );
+bool config_pwrmodo ( char *s_pwrmodo );
+bool config_pwron ( char *s_pwron );
+bool config_pwroff ( char *s_pwroff );
+void print_pwr_configuration(void);
 
 
-#define WAN_BUFFER_SIZE 64
-char wan_buffer[WAN_BUFFER_SIZE];
+#define WAN_RX_BUFFER_SIZE 300
+char wan_buffer[WAN_RX_BUFFER_SIZE];
 lBuffer_s wan_lbuffer;
 
 bool WAN_xmit_data_frame( dataRcd_s *dataRcd);
@@ -195,10 +203,16 @@ struct {
 
 typedef enum { WAN_RS485B = 0, WAN_NBIOT } wan_port_t;
 
+typedef enum { PWR_CONTINUO = 0, PWR_DISCRETO, PWR_MIXTO } pwr_modo_t;
+
 struct {
     wan_port_t wan_port;
     char dlgid[DLGID_LENGTH];
     uint16_t timerpoll;
+    uint16_t timerdial;
+    pwr_modo_t pwr_modo;
+    uint16_t pwr_hhmm_on;
+    uint16_t pwr_hhmm_off;
 	ainputs_conf_t ainputs_conf[NRO_ANALOG_CHANNELS];
     counter_conf_t counters_conf[NRO_COUNTER_CHANNELS];
     uint8_t checksum;
