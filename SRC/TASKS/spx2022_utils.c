@@ -72,6 +72,8 @@ int8_t CLKCTRL_init(void)
 //-----------------------------------------------------------------------------
 void reset(void)
 {
+    xprintf_P(PSTR("ALERT !!!. Going to reset...\r\n"));
+    vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
 	/* Issue a Software Reset to initilize the CPU */
 	ccp_write_io( (void *)&(RSTCTRL.SWRR), RSTCTRL_SWRST_bm ); 
                                            
@@ -390,3 +392,18 @@ uint16_t hh, mm;
             break;
     }
 }
+//------------------------------------------------------------------------------
+void dump_memory( char *modo)
+{
+	// Si hay datos en memoria los lee todos y los muestra en pantalla
+	// Leemos la memoria e imprimo los datos.
+	// El problema es que si hay muchos datos puede excederse el tiempo de watchdog y
+	// resetearse el dlg.
+	// Para esto, cada 32 registros pateo el watchdog.
+	// El proceso es similar a tkGprs.transmitir_dataframe
+
+    WAN_process_data_from_memory(ONLY_PRINT);
+
+
+}
+//------------------------------------------------------------------------------------

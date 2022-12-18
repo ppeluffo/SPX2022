@@ -78,14 +78,15 @@ extern "C" {
 #include "rtc79410.h"
 #include "nvm.h"
 #include "led.h"
-#include "counters.h"
 #include "pines.h"
 #include "linearBuffer.h"
-#include "ainputs.h"
+#include "fileSystem.h"
 #include "counters.h"
+#include "ainputs.h"
+
 
 #define FW_REV "1.0.0"
-#define FW_DATE "@ 20221214"
+#define FW_DATE "@ 20221218"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR2"
@@ -155,11 +156,18 @@ void reset(void);
 #define XPRINT_HEADER       true
 #define XPRINT_NO_HEADER    false
 
+#define XMIT_AND_PRINT  true
+#define ONLY_PRINT      false
+
 #define TDIAL_MIN_DISCRETO  900
+
+// Mensajes entre tareas
+#define SGN_FRAME_READY		0x01
 
 typedef struct {
     float l_ainputs[NRO_ANALOG_CHANNELS];
     float l_counters[NRO_COUNTER_CHANNELS];
+    RtcTimeType_t  rtc;	
 } dataRcd_s;
 
 void kick_wdt( uint8_t bit_pos);
@@ -178,17 +186,19 @@ bool config_pwrmodo ( char *s_pwrmodo );
 bool config_pwron ( char *s_pwron );
 bool config_pwroff ( char *s_pwroff );
 void print_pwr_configuration(void);
+void dump_memory( char *modo);
 
 
 #define WAN_RX_BUFFER_SIZE 300
 char wan_buffer[WAN_RX_BUFFER_SIZE];
 lBuffer_s wan_lbuffer;
 
-bool WAN_xmit_data_frame( dataRcd_s *dataRcd);
+bool WAN_process_data_rcd( dataRcd_s *dataRcd);
 void WAN_print_configuration(void);
 void WAN_config_debug(bool debug );
 bool WAN_read_debug(void);
 void WAN_put(uint8_t c);
+bool WAN_process_data_from_memory(bool modo);
 
 bool starting_flag;
 

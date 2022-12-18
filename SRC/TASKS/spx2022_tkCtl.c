@@ -7,8 +7,6 @@
 
 
 #include "spx2022.h"
-#include "led.h"
-#include "usart.h"
 
 #define TKCTL_DELAY_S	5
 
@@ -22,6 +20,7 @@ void tkCtl(void * pvParameters)
 	// Esta es la primer tarea que arranca.
 
 ( void ) pvParameters;
+FAT_t l_fat;
 
 	vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
     xprintf_P(PSTR("Starting tkCtl..\r\n"));
@@ -36,6 +35,21 @@ void tkCtl(void * pvParameters)
     
     systemVars.rele_output = false;
     
+    // Inicializo la memoria EE ( fileSysyem)
+	if ( FF_open() ) {
+		xprintf_P( PSTR("FSInit OK\r\n"));
+	} else {
+		FF_format(false );	// Reformateo soft.( solo la FAT )
+		xprintf_P( PSTR("FSInit FAIL !!.Reformatted...\r\n"));
+	}
+
+	FAT_read(&l_fat);
+	xprintf_P( PSTR("MEMsize=%d,wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d\r\n"),FF_MAX_RCDS, l_fat.wrPTR,l_fat.rdPTR, l_fat.delPTR,l_fat.rcds4wr,l_fat.rcds4rd,l_fat.rcds4del );
+
+	// Imprimo el tamanio de registro de memoria
+	xprintf_P( PSTR("RCD size %d bytes.\r\n"),sizeof(dataRcd_s));
+
+	// Arranco el RTC. Si hay un problema lo inicializo.
     RTC_init();
 
     // Por ultimo habilito a todas las otras tareas a arrancar

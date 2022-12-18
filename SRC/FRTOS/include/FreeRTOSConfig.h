@@ -62,7 +62,7 @@ For other frequency values, update clock_config.h with your own settings */
 #define configMAX_PRIORITIES 4
 #define configMINIMAL_STACK_SIZE 120
 #define configMAX_TASK_NAME_LEN 8
-#define configUSE_16_BIT_TICKS 1
+#define configUSE_16_BIT_TICKS 0
 #define configIDLE_SHOULD_YIELD 1
 #define configUSE_TASK_NOTIFICATIONS 1
 #define configUSE_MUTEXES 1

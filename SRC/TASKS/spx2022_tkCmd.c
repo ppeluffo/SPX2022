@@ -137,6 +137,7 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  ina {conf|chXshv|chXbusv|mfid|dieid}\r\n"));
         xprintf_P( PSTR("  rs485a, rs485b\r\n"));
         xprintf_P( PSTR("  ainput {n}\r\n"));
+        xprintf_P( PSTR("  memory {full}\r\n"));
         
     }  else if ( !strcmp_P( strupr(argv[1]), PSTR("CONFIG"))) {
 		xprintf_P( PSTR("-config:\r\n"));
@@ -152,6 +153,7 @@ static void cmdHelpFunction(void)
     	// HELP RESET
 	} else if (!strcmp_P( strupr(argv[1]), PSTR("RESET"))) {
 		xprintf_P( PSTR("-reset\r\n"));
+        xprintf_P( PSTR("  memory {soft|hard}\r\n\0"));
 		return;
 
     }  else {
@@ -176,6 +178,13 @@ static void cmdReadFunction(void)
     
     FRTOS_CMD_makeArgv();
 
+    // MEMORY
+	// read memory
+	if (!strcmp_P( strupr(argv[1]), PSTR("MEMORY\0"))  ) {
+		dump_memory(argv[2]);
+		return;
+	}
+    
     // AINPUT
     // read ainput {n}
 	if (!strcmp_P( strupr(argv[1]), PSTR("AINPUT"))  ) {
@@ -272,6 +281,19 @@ static void cmdClsFunction(void)
 //------------------------------------------------------------------------------
 static void cmdResetFunction(void)
 {
+    
+    // Reset memory ??
+	if ( strcmp_P( strupr(argv[1]), PSTR("MEMORY"))  == 0) {
+        if (strcmp_P( strupr(argv[2]), PSTR("SOFT")) == 0) {
+			FF_format(false );
+		} else if (strcmp_P( strupr(argv[2]), PSTR("HARD")) == 0) {
+			FF_format(true);
+		} else {
+			xprintf_P( PSTR("ERROR\r\nUSO: reset memory {hard|soft}\r\n"));
+			return;
+		}
+    }
+    
     xprintf("Reset..\r\n");
     reset();
 }
@@ -280,9 +302,15 @@ static void cmdStatusFunction(void)
 {
 
     // https://stackoverflow.com/questions/12844117/printing-defined-constants
-    
+
+FAT_t l_fat;
+
     xprintf("Spymovil %s %s TYPE=%s, VER=%s %s \r\n" , HW_MODELO, FRTOS_VERSION, FW_TYPE, FW_REV, FW_DATE);
      
+    // Memoria
+	FAT_read(&l_fat);
+	xprintf_P( PSTR("memory: rcdSize=%d, wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d\r\n"), sizeof(dataRcd_s), l_fat.wrPTR,l_fat.rdPTR, l_fat.delPTR,l_fat.rcds4wr,l_fat.rcds4rd,l_fat.rcds4del );
+
     xprintf_P(PSTR("Config:\r\n"));
     xprintf_P(PSTR(" date: %s\r\n"), RTC_logprint(FORMAT_LONG));
     xprintf_P(PSTR(" dlgid: %s\r\n"), systemConf.dlgid );

@@ -15,6 +15,7 @@ void tkSystem(void * pvParameters)
 {
 
 TickType_t xLastWakeTime = 0;
+bool f_status;
 
 	while (! starting_flag )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
@@ -36,11 +37,16 @@ TickType_t xLastWakeTime = 0;
         
         memcpy(dataRcd.l_ainputs, systemVars.ainputs, sizeof(dataRcd.l_ainputs));
         memcpy(dataRcd.l_counters, systemVars.counters, sizeof(dataRcd.l_counters));
-        
+       
+        // Agrego el timestamp.
+        f_status = RTC_read_dtime( &dataRcd.rtc );
+        if ( ! f_status )
+            xprintf_P(PSTR("ERROR: I2C:RTC:data_read_inputs\r\n"));
+            
         xSemaphoreGive( sem_SYSVars );
         
-        // Transmito frame de datos por la WAN
-        WAN_xmit_data_frame(&dataRcd);
+        // Proceso ( transmito o almaceno) frame de datos por la WAN
+        WAN_process_data_rcd(&dataRcd);
         
         // Imprimo localmente en pantalla
         xprint_terminal(XPRINT_HEADER);

@@ -265,7 +265,9 @@ void ainputs_prender_sensores(void)
      * Para ahorrar energia los canales se prenden cuando se necesitan y luego
      * se apagan
      */
-    
+
+uint32_t sleep_time_ms;
+
     ainputs_awake();
 	//
 	if ( ! sensores_prendidos ) {
@@ -274,7 +276,8 @@ void ainputs_prender_sensores(void)
 		// Normalmente espero 1s de settle time que esta bien para los sensores
 		// pero cuando hay un caudalimetro de corriente, necesita casi 5s
 		// vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
-		vTaskDelay( ( TickType_t)( ( 1000 * PWRSENSORES_SETTLETIME_MS ) / portTICK_PERIOD_MS ) );
+        sleep_time_ms = ( TickType_t)( ( 1000 * PWRSENSORES_SETTLETIME_MS ) / portTICK_PERIOD_MS ); 
+		vTaskDelay( sleep_time_ms );
 	}
 }
 //------------------------------------------------------------------------------
