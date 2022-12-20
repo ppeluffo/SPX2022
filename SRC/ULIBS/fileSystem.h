@@ -15,19 +15,23 @@ extern "C" {
 #include "FreeRTOS.h"
 #include "frtos-io.h"
 
+#include "stdint.h"
+#include "stdlib.h"
+#include "string.h"
+    
+    
 #include "printf.h"
 #include "eeprom.h"
 #include "i2c.h"
 #include "rtc79410.h"
     
-#define FF_SIZE_IN_KB	256		// Tamanio en KB de la eeprom externa.
-#define FF_RECD_SIZE	128		// Tamanio del registro
+#define FF_SIZE_IN_KB	128		// Tamanio en KB de la eeprom externa.
+#define FF_RECD_SIZE	32		// Tamanio del registro
 #define FF_ADDR_START	0		// Posicion inicial
-#define FF_MAX_RCDS		2048	// Cantidad de registros ( max 4096 en M24CM02 ).
-//#define FF_MAX_RCDS		128
+//#define FF_MAX_RCDS		64	// Cantidad de registros ( max 4096 en M24CM02 ).
+#define FF_MAX_RCDS		4096    // ( FF_SIZE_IN_KB * 1024 / FF_RECD_SIZE )
 
 #define FF_WRTAG	0xC5	// 1100 0101
-#define FF_EMPTYTAG	0xFF
 
 /*
  * *****************************************************************************
@@ -45,46 +49,37 @@ extern "C" {
  * Memoria toda leida: rcds4rd = 0;
  *
  */
-typedef struct {		// Estructura de control de archivo
-	uint16_t wrPTR;		// Puntero a la primera posicion libre.
-	uint16_t delPTR;	// Puntero a la primera posicion ocupada
-	uint16_t rdPTR;		// Puntero de lectura. Se mueve entre la posicion ocupada y la libre
-	uint16_t rcds4wr;	// Registros libres para escribir.
-	uint16_t rcds4del;	// rcds. para borrar ( espacio ocupado y leido )
-	uint16_t rcds4rd;	// rcds. para leer
-	uint8_t checksum;
-} FAT_t;
+/*
+ * Defino el FS como un buffer circular de la EEPROM.
+ * Solo necesito el control ya que el buffer es la EEPROM
+ */
+typedef struct {
+	int16_t head;
+	int16_t tail;
+	int16_t count;
+	int16_t length;
+} fat_s;
 
-typedef struct {					// File Control Block
-	FAT_t fat;						// Estructura de control de archivo
-	uint8_t errno;					// Codigo del ultimo error
-	char rw_buffer[FF_RECD_SIZE];	//
-	char check_buffer[FF_RECD_SIZE];
-} FCB_t;
+fat_s FAT;
 
-FCB_t FCB;
+char fs_rw_buffer[FF_RECD_SIZE];
 
-#define pdFF_ERRNO_NONE		0
-#define pdFF_ERRNO_MEMFULL	1
-#define pdFF_ERRNO_MEMWR	2
-#define pdFF_ERRNO_MEMEMPTY	3
-#define pdFF_ERRNO_MEMRD	4
-#define pdFF_ERRNO_RDCKS	5
-#define pdFF_ERRNO_RDNOTAG	6
-#define pdFF_ERRNO_INIT		7
 
 //-----------------------------------------------------------------------------
 // FUNCIONES PUBLICAS
 //------------------------------------------------------------------------------
-void FAT_init(void);
-bool FF_open(void);
-int16_t FF_writeRcd( const void *pvBuffer, uint8_t xSize );
-int16_t FF_readRcd( void *pvBuffer, uint8_t xSize );
-uint8_t FF_errno( void );
-void FF_rewind(void);
-void FF_deleteRcd(void);
-void FF_format( bool fullformat );
-void FAT_read( FAT_t *fat );
+bool FAT_flush(void);
+bool FS_open(void);
+void FS_init(void);
+int16_t FS_writeRcd( const void *dr, uint8_t xSize );
+int16_t FS_readRcd( void *dr, uint8_t xSize );
+int16_t FS_readRcdByPos( uint16_t pos, void *dr, uint8_t xSize );
+void FS_format(bool fullformat);
+uint8_t fs_chksum8(const char *buff, size_t len);
+void FAT_read( fat_s *dstfat);
+uint16_t FS_dump( bool (*funct)(char *buff));
+void FS_delete( int16_t ndrcds);
+
 //------------------------------------------------------------------------------
 
 

@@ -21,6 +21,7 @@ TickType_t xLastWakeTime = 0;
 uint8_t channel;
 float mag;
 uint16_t raw;
+uint32_t waiting_ticks;
 
 	while (! starting_flag )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
@@ -37,7 +38,8 @@ uint16_t raw;
         kick_wdt(AIN_WDG_bp);
         
 		// Espero timerpoll ms.
-		vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( (1000 * systemConf.timerpoll ) / portTICK_PERIOD_MS ) );
+        waiting_ticks = (uint32_t)systemConf.timerpoll * 1000 / portTICK_PERIOD_MS;
+        vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( waiting_ticks ));
 
 		// Leo entradas analogicas
         // Prendo los sensores

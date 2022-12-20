@@ -384,26 +384,69 @@ uint16_t hh, mm;
             xprintf_P(PSTR(" pwr_modo: mixto\r\n"));
             hh = (uint8_t)(systemConf.pwr_hhmm_on / 100);
             mm = (uint8_t)(systemConf.pwr_hhmm_on % 100);
-            xprintf_P(PSTR("           continuo -> %02d:%02d\r\n"), hh,mm);
+            xprintf_P(PSTR("    inicio continuo -> %02d:%02d\r\n"), hh,mm);
             
             hh = (uint8_t)(systemConf.pwr_hhmm_off / 100);
             mm = (uint8_t)(systemConf.pwr_hhmm_off % 100);
-            xprintf_P(PSTR("           discreto -> %02d:%02d\r\n"), hh,mm);
+            xprintf_P(PSTR("    inicio discreto -> %02d:%02d\r\n"), hh,mm);
             break;
     }
 }
 //------------------------------------------------------------------------------
-void dump_memory( char *modo)
+void xprint_dr(dataRcd_s *dr)
 {
-	// Si hay datos en memoria los lee todos y los muestra en pantalla
-	// Leemos la memoria e imprimo los datos.
-	// El problema es que si hay muchos datos puede excederse el tiempo de watchdog y
-	// resetearse el dlg.
-	// Para esto, cada 32 registros pateo el watchdog.
-	// El proceso es similar a tkGprs.transmitir_dataframe
-
-    WAN_process_data_from_memory(ONLY_PRINT);
+    /*
+     * Imprime en pantalla el dataRcd pasado
+     */
+    
+uint8_t channel;
 
 
+    xprintf_P( PSTR("ID:%s;TYPE:%s;VER:%s;"), systemConf.dlgid, FW_TYPE, FW_REV);
+ 
+    // Clock
+    xprintf_P( PSTR("DATE:%02d%02d%02d;"), dr->rtc.year, dr->rtc.month, dr->rtc.day );
+    xprintf_P( PSTR("TIME:%02d%02d%02d;"), dr->rtc.hour, dr->rtc.min, dr->rtc.sec);
+    
+    // Analog Channels:
+    for ( channel=0; channel < NRO_ANALOG_CHANNELS; channel++) {
+        if ( strcmp ( systemConf.ainputs_conf[channel].name, "X" ) != 0 ) {
+            xprintf_P( PSTR("%s:%0.2f;"), systemConf.ainputs_conf[channel].name, dr->l_ainputs[channel]);
+        }
+    }
+        
+    // Counter Channels:
+    for ( channel=0; channel < NRO_COUNTER_CHANNELS; channel++) {
+        if ( strcmp ( systemConf.counters_conf[channel].name, "X" ) != 0 ) {
+            xprintf_P( PSTR("%s:%0.3f;"), systemConf.counters_conf[channel].name, dr->l_counters[channel]);
+        }
+    }
+    xprintf_P( PSTR("\r\n"));
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+bool xprint_from_dump(char *buff)
+{
+    /*
+     * Funcion pasada a FS_dump() para que formatee el buffer y lo imprima
+     * como un dr.
+     */
+dataRcd_s dr;
+
+
+/*
+uint8_t j;
+
+    for (j=0; j<FF_RECD_SIZE; j++) {
+        if ( (j%8) == 0 ) {
+            xprintf_P(PSTR("\r\n%02d: "),j);
+        }
+        xprintf_P(PSTR("[0x%02x] "), buff[j]);
+    }
+    xprintf_P(PSTR("\r\n"));
+*/
+
+    memcpy ( &dr, buff, sizeof(dataRcd_s) );
+    xprint_dr(&dr);
+    return(true);
+}
+//------------------------------------------------------------------------------

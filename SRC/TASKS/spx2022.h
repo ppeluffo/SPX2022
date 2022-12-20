@@ -86,7 +86,7 @@ extern "C" {
 
 
 #define FW_REV "1.0.0"
-#define FW_DATE "@ 20221218"
+#define FW_DATE "@ 20221220"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR2"
@@ -172,13 +172,16 @@ typedef struct {
 
 void kick_wdt( uint8_t bit_pos);
 
+void poll_data(void);
+
 uint8_t u_hash(uint8_t seed, char ch );
 void config_default(void);
 bool config_debug( char *tipo, char *valor);
 bool save_config_in_NVM(void);
 bool load_config_from_NVM(void);
 bool config_wan_port(char *comms_type);
-void xprint_terminal(bool print_header);
+dataRcd_s *get_system_dr(void);
+void xprint_dr(dataRcd_s *dr);
 void data_resync_clock( char *str_time, bool force_adjust);
 bool config_timerdial ( char *s_timerdial );
 bool config_timerpoll ( char *s_timerpoll );
@@ -186,7 +189,7 @@ bool config_pwrmodo ( char *s_pwrmodo );
 bool config_pwron ( char *s_pwron );
 bool config_pwroff ( char *s_pwroff );
 void print_pwr_configuration(void);
-void dump_memory( char *modo);
+bool xprint_from_dump(char *buff);
 
 
 #define WAN_RX_BUFFER_SIZE 300
@@ -198,7 +201,6 @@ void WAN_print_configuration(void);
 void WAN_config_debug(bool debug );
 bool WAN_read_debug(void);
 void WAN_put(uint8_t c);
-bool WAN_process_data_from_memory(bool modo);
 
 bool starting_flag;
 

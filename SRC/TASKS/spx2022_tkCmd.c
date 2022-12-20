@@ -15,6 +15,8 @@ static void cmdTestFunction(void);
 static void pv_snprintfP_OK(void );
 static void pv_snprintfP_ERR(void );
 
+char rw_buffer[FF_RECD_SIZE];
+
 //------------------------------------------------------------------------------
 void tkCmd(void * pvParameters)
 {
@@ -29,7 +31,7 @@ void tkCmd(void * pvParameters)
 	//vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
 
 uint8_t c = 0;
-//uint16_t sleep_timeout;
+uint16_t sleep_timeout;
 
     FRTOS_CMD_init();
 
@@ -45,7 +47,7 @@ uint8_t c = 0;
     xprintf_P(PSTR("Starting tkCmd..\r\n" ));
     xprintf_P(PSTR("Spymovil %s %s %s %s \r\n") , HW_MODELO, FRTOS_VERSION, FW_REV, FW_DATE);
     
-    //sleep_timeout = 500; // Espero hasta 5 secs
+    sleep_timeout = 1500; // Espero hasta 30s secs
     
 	// loop
 	for( ;; )
@@ -53,23 +55,23 @@ uint8_t c = 0;
         kick_wdt(CMD_WDG_bp);
          
 		c = '\0';	// Lo borro para que luego del un CR no resetee siempre el timer.
-		// el read se bloquea 50ms. lo que genera la espera.
+		// el read se bloquea 10ms. lo que genera la espera.
 		//while ( frtos_read( fdTERM, (char *)&c, 1 ) == 1 ) {
         while ( xgetc( (char *)&c ) == 1 ) {
             FRTOS_CMD_process(c);
-            //sleep_timeout = 500;
+            sleep_timeout = 1500;
         }
         
+        // Espero 10ms si no hay caracteres en el buffer
         vTaskDelay( ( TickType_t)( 10 / portTICK_PERIOD_MS ) );
         
-        // Luego de 5 secs de inactividad, duermo 20 secs
-        /*
+        // Luego de 30 secs de inactividad, duermo 20 secs
         if ( sleep_timeout-- == 0 ) {
-            xprintf_P(PSTR("Going to sleep\r\n"));
+            //xprintf_P(PSTR("Going to sleep\r\n"));
             vTaskDelay( ( TickType_t)( 20000 / portTICK_PERIOD_MS ) );
-            sleep_timeout = 500;
+            sleep_timeout = 1;
         }
-         */
+        
 	}    
 }
 //------------------------------------------------------------------------------
@@ -77,7 +79,63 @@ static void cmdTestFunction(void)
 {
 
     FRTOS_CMD_makeArgv();
+
+dataRcd_s dr;
+uint8_t bytes_written;
+uint8_t i;
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("KILL"))  ) {
+        if (!strcmp_P( strupr(argv[2]), PSTR("WAN"))  ) {  
+            if ( xHandle_tkWAN != NULL ) {
+                vTaskSuspend( xHandle_tkWAN );
+                xHandle_tkWAN = NULL;
+            }
+            return;
+        }
         
+        if (!strcmp_P( strupr(argv[2]), PSTR("SYS"))  ) {
+            if ( xHandle_tkSys != NULL ) {
+                vTaskSuspend( xHandle_tkSys );
+                xHandle_tkSys = NULL;
+            }
+            return;
+        }        
+        xprintf_P(PSTR("test kill {sys,wan}\r\n"));
+        return;
+    }
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("POLL"))  ) {
+        poll_data();
+        return;
+    }
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("READRCD"))  ) {
+        FS_readRcdByPos( atoi(argv[2]), &dr, sizeof(dataRcd_s) );
+        xprint_dr(&dr);
+        return;
+    }
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("WRITE\0"))  ) {
+		xprintf_P(PSTR("Testing write FF\r\n"));
+        dr.l_ainputs[0] = 10.32;
+        dr.l_ainputs[1] = 11.42;
+        dr.l_ainputs[2] = 110.01;
+        dr.l_counters[0] = 221.0;
+        dr.l_counters[1] = 32.64;
+        dr.rtc.year = 22;
+        dr.rtc.month = 12;
+        dr.rtc.day = 18;
+        dr.rtc.hour = 12;
+        dr.rtc.min = 30;
+        dr.rtc.sec = 00;
+        FS_writeRcd( &dr, sizeof(dataRcd_s) );
+		return;
+	}
+
+    xprintf_P( PSTR("Test: poll, readrcd {pos}, write, kill {wan,sys}\r\n"));
+    return;
+    
+/*
 int8_t i;
 char c;
 float f;
@@ -113,6 +171,7 @@ char s1[20];
    
     // DEFINED
     xprintf("Spymovil %s %s %s %s \r\n" , HW_MODELO, FRTOS_VERSION, FW_REV, FW_DATE);
+*/
     
 }
 //------------------------------------------------------------------------------
@@ -181,7 +240,7 @@ static void cmdReadFunction(void)
     // MEMORY
 	// read memory
 	if (!strcmp_P( strupr(argv[1]), PSTR("MEMORY\0"))  ) {
-		dump_memory(argv[2]);
+		FS_dump(xprint_from_dump);
 		return;
 	}
     
@@ -282,12 +341,28 @@ static void cmdClsFunction(void)
 static void cmdResetFunction(void)
 {
     
+    FRTOS_CMD_makeArgv();
+    
     // Reset memory ??
-	if ( strcmp_P( strupr(argv[1]), PSTR("MEMORY"))  == 0) {
-        if (strcmp_P( strupr(argv[2]), PSTR("SOFT")) == 0) {
-			FF_format(false );
-		} else if (strcmp_P( strupr(argv[2]), PSTR("HARD")) == 0) {
-			FF_format(true);
+    if (!strcmp_P( strupr(argv[1]), PSTR("MEMORY"))) {
+        
+        /*
+         * No puedo estar usando la memoria !!!
+         */
+        if ( xHandle_tkSys != NULL ) {
+            vTaskSuspend( xHandle_tkSys );
+            xHandle_tkSys = NULL;
+        }
+        
+        if ( xHandle_tkWAN != NULL ) {
+            vTaskSuspend( xHandle_tkWAN );
+            xHandle_tkWAN = NULL;
+        }
+        
+        if ( !strcmp_P( strupr(argv[2]), PSTR("SOFT"))) {
+			FS_format(false );
+		} else if ( !strcmp_P( strupr(argv[2]), PSTR("HARD"))) {
+			FS_format(true);
 		} else {
 			xprintf_P( PSTR("ERROR\r\nUSO: reset memory {hard|soft}\r\n"));
 			return;
@@ -303,14 +378,14 @@ static void cmdStatusFunction(void)
 
     // https://stackoverflow.com/questions/12844117/printing-defined-constants
 
-FAT_t l_fat;
+fat_s l_fat;
 
     xprintf("Spymovil %s %s TYPE=%s, VER=%s %s \r\n" , HW_MODELO, FRTOS_VERSION, FW_TYPE, FW_REV, FW_DATE);
      
     // Memoria
-	FAT_read(&l_fat);
-	xprintf_P( PSTR("memory: rcdSize=%d, wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d\r\n"), sizeof(dataRcd_s), l_fat.wrPTR,l_fat.rdPTR, l_fat.delPTR,l_fat.rcds4wr,l_fat.rcds4rd,l_fat.rcds4del );
-
+    FAT_read(&l_fat);
+	xprintf_P( PSTR("memory: rcdSize=%d, size=%d, wrPtr=%d, rdPtr=%d,count=%d\r\n"),sizeof(dataRcd_s), FF_MAX_RCDS, l_fat.head,l_fat.tail, l_fat.count );
+ 
     xprintf_P(PSTR("Config:\r\n"));
     xprintf_P(PSTR(" date: %s\r\n"), RTC_logprint(FORMAT_LONG));
     xprintf_P(PSTR(" dlgid: %s\r\n"), systemConf.dlgid );
@@ -326,7 +401,7 @@ FAT_t l_fat;
     xprintf_P(PSTR("Values:\r\n"));
     xprintf_P(PSTR(" Rele: %d\r\n"), systemVars.rele_output);
     xprintf_P(PSTR(" Frame: "));
-    xprint_terminal(XPRINT_NO_HEADER);
+    xprint_dr( get_system_dr());
     
 }
 //------------------------------------------------------------------------------

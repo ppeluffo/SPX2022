@@ -20,7 +20,7 @@ void tkCtl(void * pvParameters)
 	// Esta es la primer tarea que arranca.
 
 ( void ) pvParameters;
-FAT_t l_fat;
+fat_s l_fat;
 
 	vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
     xprintf_P(PSTR("Starting tkCtl..\r\n"));
@@ -36,15 +36,17 @@ FAT_t l_fat;
     systemVars.rele_output = false;
     
     // Inicializo la memoria EE ( fileSysyem)
-	if ( FF_open() ) {
+	if ( FS_open() ) {
 		xprintf_P( PSTR("FSInit OK\r\n"));
 	} else {
-		FF_format(false );	// Reformateo soft.( solo la FAT )
-		xprintf_P( PSTR("FSInit FAIL !!.Reformatted...\r\n"));
+        FAT_flush();
+        xprintf_P( PSTR("FSInit FAIL !!.Reformatted...\r\n"));
+		//FS_format(false );	// Reformateo soft.( solo la FAT )
+		//xprintf_P( PSTR("FSInit FAIL !!.Reformatted...\r\n"));
 	}
 
-	FAT_read(&l_fat);
-	xprintf_P( PSTR("MEMsize=%d,wrPtr=%d,rdPtr=%d,delPtr=%d,r4wr=%d,r4rd=%d,r4del=%d\r\n"),FF_MAX_RCDS, l_fat.wrPTR,l_fat.rdPTR, l_fat.delPTR,l_fat.rcds4wr,l_fat.rcds4rd,l_fat.rcds4del );
+    FAT_read(&l_fat);
+	xprintf_P( PSTR("MEMsize=%d, wrPtr=%d, rdPtr=%d,count=%d\r\n"),FF_MAX_RCDS, l_fat.head,l_fat.tail, l_fat.count );
 
 	// Imprimo el tamanio de registro de memoria
 	xprintf_P( PSTR("RCD size %d bytes.\r\n"),sizeof(dataRcd_s));
@@ -76,8 +78,8 @@ static uint8_t wdg_count = 0;
     //wdt_reset();
     //return;
         
-    // EL wdg lo leo cada 60secs ( 5 x 12 )
-    if ( wdg_count++ < 12 ) {
+    // EL wdg lo leo cada 300secs ( 5 x 60 )
+    if ( wdg_count++ < 60 ) {
         wdt_reset();
         return;
     }

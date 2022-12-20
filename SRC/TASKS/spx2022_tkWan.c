@@ -13,17 +13,19 @@ uint8_t hash_buffer[HASH_BUFFER_SIZE];
 
 static bool f_debug_comms;
 
-typedef enum { WAN_APAGADO=0, WAN_OFFLINE, WAN_ONLINE } wan_states_t;
+typedef enum { WAN_APAGADO=0, WAN_OFFLINE, WAN_ONLINE_CONFIG, WAN_ONLINE_DATA } wan_states_t;
+
 static uint8_t wan_state;
 
 struct {
     dataRcd_s dr;
-    bool data_ready;
-} WanDataRecordBuffer;
+    bool dr_ready;
+} drWanBuffer;
 
 static void wan_state_apagado(void);
 static void wan_state_offline(void);
-static void wan_state_online(void);
+static void wan_state_online_config(void);
+static void wan_state_online_data(void);
 static bool wan_process_frame_linkup(void);
 static bool wan_process_frame_recoverId(void);
 static bool wan_process_rsp_recoverId(void);
@@ -33,13 +35,12 @@ static bool wan_process_frame_configAinputs(void);
 static bool wan_process_rsp_configAinputs(void);
 static bool wan_process_frame_configCounters(void);
 static bool wan_process_rsp_configCounters(void);
-
 static bool wan_process_buffer_dr(dataRcd_s *dr);
 static void wan_load_dr_in_txbuffer(dataRcd_s *dr, uint8_t *buff, uint16_t buffer_size );
-
 static bool wan_process_rsp_data(void);
-
 static pwr_modo_t wan_check_pwr_modo_now(void);
+
+bool wan_process_from_dump(char *buff);
 
 #define PRENDER_MODEM() SET_RELEOUT()
 #define APAGAR_MODEM() CLEAR_RELEOUT()
@@ -53,8 +54,9 @@ bool f_rsp_configBase;
 bool f_rsp_configAinputs;
 bool f_rsp_configCounters;
 bool f_rsp_data;
+bool f_configurated;
 
-bool f_link_idle;
+bool f_link_up;
 
 bool f_save_config;
 
@@ -75,7 +77,6 @@ void tkWAN(void * pvParameters)
 
     sem_WAN = xSemaphoreCreateMutexStatic( &WAN_xMutexBuffer );
     lBchar_CreateStatic ( &wan_lbuffer, wan_buffer, WAN_RX_BUFFER_SIZE );
-    f_link_idle = false;
     
     xprintf_P(PSTR("Starting tkWAN..\r\n" ));
     vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
@@ -92,8 +93,11 @@ void tkWAN(void * pvParameters)
             case WAN_OFFLINE:
                 wan_state_offline();
                 break;
-            case WAN_ONLINE:
-                wan_state_online();
+            case WAN_ONLINE_CONFIG:
+                wan_state_online_config();
+                break;
+            case WAN_ONLINE_DATA:
+                wan_state_online_data();
                 break;
             default:
                 xprintf_P(PSTR("ERROR: WAN STATE ??\r\n"));
@@ -119,7 +123,7 @@ pwr_modo_t pwr_modo;
     kick_wdt(XWAN_WDG_bp);
     xprintf_P(PSTR("WAN:: State APAGADO\r\n"));
     
-    f_link_idle = false;
+    f_link_up = false;
     
     APAGAR_MODEM();
     vTaskDelay( ( TickType_t)( 5000 / portTICK_PERIOD_MS ) );
@@ -155,7 +159,8 @@ pwr_modo_t pwr_modo;
     }
     
 exit:
-                
+    
+    f_configurated = false;    // Fuerzo que se deba configurar
     wan_state = WAN_OFFLINE;
     return;
   
@@ -175,31 +180,61 @@ static void wan_state_offline(void)
     xprintf_P(PSTR("WAN:: State OFFLINE\r\n"));
     kick_wdt(XWAN_WDG_bp);
     
-    f_save_config = false;
-    
     if ( ! wan_process_frame_linkup() ) {
         wan_state = WAN_APAGADO;
-        return;
-    }
-
-    if ( ! wan_process_frame_recoverId() ) {
-        wan_state = WAN_APAGADO;
-        return;
+        goto quit;
     }
     
-    wan_process_frame_configBase();
-    wan_process_frame_configAinputs();
-    wan_process_frame_configCounters();
- 
-    if ( f_save_config ) {
-        save_config_in_NVM();
-    }
+    wan_state = WAN_ONLINE_CONFIG;
+    f_link_up = true;   // Si responde al ping asumo que el link esta up.
     
-    wan_state = WAN_ONLINE;
+quit:
+                
     return;
 }
 //------------------------------------------------------------------------------
-static void wan_state_online(void)
+static void wan_state_online_config(void)
+{
+    /*
+     * Se encarga de la configuracion.
+     * Solo lo hace una sola vez por lo que tiene una flag estatica que
+     * indica si ya se configuro.
+     */
+  
+
+
+    xprintf_P(PSTR("WAN:: State ONLINE_CONFIG\r\n"));
+    kick_wdt(XWAN_WDG_bp);
+
+    if ( ! wan_process_frame_recoverId() ) {
+        wan_state = WAN_APAGADO;
+        goto quit;
+    }
+    
+    if ( ! f_configurated ) {
+        wan_process_frame_configBase();
+        wan_process_frame_configAinputs();
+        wan_process_frame_configCounters();
+        
+        if ( f_save_config ) {
+            save_config_in_NVM();
+        }
+        
+        f_configurated = true;
+        
+        wan_state = WAN_ONLINE_DATA;
+        goto quit;
+    }
+    
+    wan_state = WAN_ONLINE_DATA;
+    
+quit:
+                
+    return;
+
+}
+//------------------------------------------------------------------------------
+static void wan_state_online_data(void)
 {
     /*
      * Este estado es cuando estamos en condiciones de enviar frames de datos
@@ -211,42 +246,56 @@ static void wan_state_online(void)
 
 pwr_modo_t pwr_modo;
 uint32_t sleep_time_ms;
+uint16_t dumped_rcds = 0;
+bool res;
 
-    xprintf_P(PSTR("WAN:: State ONLINE\r\n"));
+    xprintf_P(PSTR("WAN:: State ONLINE_DATA\r\n"));
     kick_wdt(XWAN_WDG_bp);
     
-    // Si hay datos en memoria los transmito todos.
-    WAN_process_data_from_memory(XMIT_AND_PRINT);
+   
+// ENTRY:
+    
+    // Si hay datos en memoria los transmito todos y los borro.
+    xprintf_P(PSTR("WAN:: ONLINE: dump memory...\r\n"));
+    dumped_rcds = FS_dump(wan_process_from_dump);
+    xprintf_P(PSTR("WAN:: ONLINE dumped %d rcds.\r\n"), dumped_rcds );
+    FS_delete(dumped_rcds);
+    
+    // 
+    pwr_modo = wan_check_pwr_modo_now();
+    if ( pwr_modo == PWR_DISCRETO) {
+       wan_state = WAN_APAGADO;
+       goto quit;
+    }
     
     // En modo continuo me quedo esperando por datos para transmitir. 
-    while(1) {
-        
-        pwr_modo = wan_check_pwr_modo_now();
-        
-        if ( pwr_modo == PWR_DISCRETO) {
-            break;
-            
-        } else {
-            // Estoy en modo continuo con el enlace listo.
-            f_link_idle = true;
-            if ( WanDataRecordBuffer.data_ready ) {
-               // Hay datos para transmitir
-                wan_process_buffer_dr( &WanDataRecordBuffer.dr);
-                WanDataRecordBuffer.data_ready = false;
+    while( wan_check_pwr_modo_now() == PWR_CONTINUO ) {
+           
+        // Hay datos para transmitir
+        if ( drWanBuffer.dr_ready ) {
+            res =  wan_process_buffer_dr( &drWanBuffer.dr);
+            if (res) {
+                drWanBuffer.dr_ready = false;
+            } else {
+                // Cayo el enlace ???
+                f_link_up = false;
+                wan_state = WAN_OFFLINE;
+                goto quit;
             }
-                
         }
         
-        // Vuelvo a chequear el enlace cada 1 min( tickeless & wdg ).
+        // Hay datos en memoria ?
+        
+        // Espero que hayan datos
+         // Vuelvo a chequear el enlace cada 1 min( tickeless & wdg ).
         kick_wdt(XWAN_WDG_bp);
         sleep_time_ms = ( TickType_t)(  (60000) / portTICK_PERIOD_MS );
         ulTaskNotifyTake( pdTRUE, sleep_time_ms );
-        //vTaskDelay( ( TickType_t)( systemConf.timerpoll * 1000 / portTICK_PERIOD_MS ) );
-        xprintf_P(PSTR("DEBUG AWAKE\r\n"));
-        
+        //vTaskDelay( ( TickType_t)( systemConf.timerpoll * 1000 / portTICK_PERIOD_MS ) );      
     }
+   
+quit:
     
-    wan_state = WAN_APAGADO;
     return;        
 }
 //------------------------------------------------------------------------------
@@ -260,7 +309,7 @@ uint16_t pwr_off;
 
    // En modo continuo salgo enseguida. No importa timerdial
     if ( systemConf.pwr_modo == PWR_CONTINUO) {
-        xprintf_P(PSTR("WAN:: DEBUG: CPWM pwrmodo continuo.\r\n"));
+        //xprintf_P(PSTR("WAN:: DEBUG: CPWM pwrmodo continuo.\r\n"));
         return( PWR_CONTINUO);
     }
     
@@ -323,7 +372,7 @@ bool retS = false;
         wan_xmit_out(DEBUG_WAN);
     
         // Espero respuesta chequeando cada 1s durante 10s.
-        timeout = 10;
+        timeout = 15;
         while ( timeout-- > 0) {
             vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
             if ( f_rsp_ping ) {
@@ -949,14 +998,14 @@ int16_t fptr;
     // Analog Channels:
     for ( channel=0; channel < NRO_ANALOG_CHANNELS; channel++) {
         if ( strcmp ( systemConf.ainputs_conf[channel].name, "X" ) != 0 ) {
-            fptr += sprintf_P( (char*)&buff[fptr], PSTR(";%s:%0.2f"), systemConf.ainputs_conf[channel].name, dr->l_ainputs[channel]);
+            fptr += sprintf_P( (char*)&buff[fptr], PSTR("%s:%0.2f;"), systemConf.ainputs_conf[channel].name, dr->l_ainputs[channel]);
         }
     }
         
     // Counter Channels:
     for ( channel=0; channel < NRO_COUNTER_CHANNELS; channel++) {
         if ( strcmp ( systemConf.counters_conf[channel].name, "X" ) != 0 ) {
-            fptr += sprintf_P( (char*)&buff[fptr], PSTR(";%s:%0.3f"), systemConf.counters_conf[channel].name, dr->l_counters[channel]);
+            fptr += sprintf_P( (char*)&buff[fptr], PSTR("%s:%0.3f;"), systemConf.counters_conf[channel].name, dr->l_counters[channel]);
         }
     }
     
@@ -1079,6 +1128,21 @@ char *p;
     xprintf_P(PSTR("Rcvd-> %s\r\n"), p );
 }
 //------------------------------------------------------------------------------
+bool wan_process_from_dump(char *buff)
+{
+    /*
+     * Funcion pasada a FS_dump() para que formatee el buffer y transmita
+     * como un dr.
+     */
+dataRcd_s dr;
+bool retS = false;
+
+    kick_wdt(XWAN_WDG_bp);
+    memcpy ( &dr, buff, sizeof(dataRcd_s) );
+    retS = wan_process_buffer_dr(&dr);
+    return(retS);
+}
+//------------------------------------------------------------------------------
 //
 // FUNCIONES PUBLICAS
 //
@@ -1095,13 +1159,17 @@ bool WAN_process_data_rcd( dataRcd_s *dataRcd)
      */
    
 int8_t bytes_written = 0;
-FAT_t fat;
+fat_s l_fat;   
 
-    if ( f_link_idle ) {
-        // Hay enlace. Buffereo para transmitir en wan_online
-        memcpy( &WanDataRecordBuffer.dr, dataRcd, sizeof(dataRcd_s));
-        WanDataRecordBuffer.data_ready = true;
-        
+    if ( f_link_up ) {
+        /*
+         * Hay enlace. 
+         * Guardo el dato en el buffer.
+         * Indico que hay un dato listo para enviar
+         * Aviso (despierto) para que se transmita.
+         */
+        memcpy( &drWanBuffer.dr, dataRcd, sizeof(dataRcd_s));
+        drWanBuffer.dr_ready = true;    
         // Aviso al estado online que hay un frame listo
         while ( xTaskNotify(xHandle_tkWAN, SGN_FRAME_READY , eSetBits ) != pdPASS ) {
 			vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
@@ -1110,15 +1178,15 @@ FAT_t fat;
     } else {
         // Guardo en memoria
         xprintf_P(PSTR("WAN: Save frame in EE.\r\n"));
-        memset( &fat, '\0', sizeof(FAT_t));
-        bytes_written = FF_writeRcd( &dataRcd, sizeof(dataRcd_s) );
+        bytes_written = FS_writeRcd( dataRcd, sizeof(dataRcd_s) );
         if ( bytes_written == -1 ) {
             // Error de escritura o memoria llena ??
-            xprintf_P(PSTR("WAN:: WR ERROR (%d)\r\n\0"),FF_errno() );
+            xprintf_P(PSTR("WAN:: WR ERROR\r\n"));
         }
         // Stats de memoria
-        FAT_read(&fat);
-        xprintf_P( PSTR("WAN:: MEM [wr=%d,rd=%d,del=%d]\0"), fat.wrPTR,fat.rdPTR,fat.delPTR );
+        FAT_read(&l_fat);
+        xprintf_P( PSTR("wrPtr=%d,rdPtr=%d,count=%d\r\n"),l_fat.head,l_fat.tail, l_fat.count );
+        
     }
     return(true);
 }
@@ -1168,59 +1236,5 @@ void WAN_config_debug(bool debug )
 bool WAN_read_debug(void)
 {
     return (f_debug_comms);
-}
-//------------------------------------------------------------------------------
-bool WAN_process_data_from_memory(bool modo)
-{
-    /*
-     * Recorro toda la memoria.
-     * Si hay datos y modo=XMIT_AND_PRINT, transmito y logueo.
-     * Si es ONLY_PRINT, lo logue.
-     * Al recibir respuesta los borro y ajusto la FAT
-     */
-    
-FAT_t fat;
-uint8_t bRead;
-uint16_t nro_rcds;
-dataRcd_s dr;
-
-    // Vemos si hay datos en la memoria.
-    memset( &fat, '\0', sizeof ( FAT_t));
-	FAT_read(&fat);
-	if ( fat.rcds4rd == 0) {
-		xprintf_P( PSTR("WAN:: bd EMPTY\r\n"));
-        return(true);
-	}
-    
-    FF_rewind();
-    nro_rcds = fat.rcds4rd;
-    while(nro_rcds-- > 0) {
-        
-        // Leo 1 registro.
-        memset ( &fat, '\0', sizeof(FAT_t));
-		memset ( &dr, '\0', sizeof( dataRcd_s));
-		bRead = FF_readRcd( &dr, sizeof(dataRcd_s));
-		if ( bRead == 0 ) {
-			return(false);
-        }
-        
-        if (modo == XMIT_AND_PRINT) {
-            wan_process_buffer_dr(&dr);
-            FF_deleteRcd();
-        } else {
-            
-            while ( xSemaphoreTake( sem_WAN, MSTOTAKEWANSEMPH ) != pdTRUE )
-                vTaskDelay( ( TickType_t)( 1 ) );
-    
-            // Formateo(escribo) el dr en el wan_tx_buffer
-            wan_load_dr_in_txbuffer( &dr, (uint8_t *)&wan_tx_buffer,WAN_TX_BUFFER_SIZE);  
-            // Imprimo
-            xprintf_P( PSTR("%s\r\n"), &wan_tx_buffer[0]);
-            
-            xSemaphoreGive( sem_WAN );
-         
-        }  
-    } 
-    return(true);
 }
 //------------------------------------------------------------------------------

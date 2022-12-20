@@ -46,7 +46,7 @@ int main(void) {
     frtos_open(fdNVM, 0 );
     
     sem_SYSVars = xSemaphoreCreateMutexStatic( &SYSVARS_xMutexBuffer );
-    FAT_init();
+    FS_init();
     starting_flag = false;
     
     xHandle_tkCtl = xTaskCreateStatic( tkCtl, "CTL", tkCtl_STACK_SIZE, (void *)1, tkCtl_TASK_PRIORITY, tkCtl_Buffer, &tkCtl_Buffer_Ptr );

@@ -23,7 +23,7 @@ void tkCounters(void * pvParameters)
 {
 
 TickType_t xLastWakeTime = 0;
-
+uint32_t waiting_ticks;
 
 	while (! starting_flag )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
@@ -42,7 +42,8 @@ TickType_t xLastWakeTime = 0;
         kick_wdt(CNT_WDG_bp);
         
 		// Espero timerpoll ms.
-		vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( (1000 * systemConf.timerpoll ) / portTICK_PERIOD_MS ) );
+        waiting_ticks = (uint32_t)systemConf.timerpoll * 1000 / portTICK_PERIOD_MS;
+        vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( waiting_ticks ));
         
         counters_read(l_counters, systemConf.counters_conf );
         counters_clear();

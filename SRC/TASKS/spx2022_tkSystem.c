@@ -15,7 +15,7 @@ void tkSystem(void * pvParameters)
 {
 
 TickType_t xLastWakeTime = 0;
-bool f_status;
+uint32_t waiting_ticks;
 
 	while (! starting_flag )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
@@ -24,12 +24,32 @@ bool f_status;
     
     xLastWakeTime = xTaskGetTickCount();
     
+    vTaskDelay( ( TickType_t)( 10000 / portTICK_PERIOD_MS ) );
+    poll_data();
+    
 	for( ;; )
 	{
         kick_wdt(SYS_WDG_bp);
-        
         // Espero timerpoll ms.
-		vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( (1000 * systemConf.timerpoll ) / portTICK_PERIOD_MS ) );
+        waiting_ticks = (uint32_t)systemConf.timerpoll * 1000 / portTICK_PERIOD_MS;
+		vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( waiting_ticks ));
+        
+        poll_data();      
+	}
+}
+//------------------------------------------------------------------------------
+dataRcd_s *get_system_dr(void)
+{
+    return(&dataRcd);
+}
+//------------------------------------------------------------------------------
+void poll_data(void)
+{
+    /*
+     * Se encarga de leer los datos.
+     * Lo hacemos aqui asi es una funcion que se puede invocar desde Cmd.
+     */
+bool f_status;
 
         // los valores publicados en el systemVars los leo en variables locales.
         while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 5 ) != pdTRUE )
@@ -45,49 +65,18 @@ bool f_status;
             
         xSemaphoreGive( sem_SYSVars );
         
+        // Control de errores
+        // 1- Clock:
+        if ( dataRcd.rtc.year == 0) {
+            xprintf_P(PSTR("DATA ERROR: byClock\r\n"));
+            return;
+        }
+        
         // Proceso ( transmito o almaceno) frame de datos por la WAN
         WAN_process_data_rcd(&dataRcd);
         
         // Imprimo localmente en pantalla
-        xprint_terminal(XPRINT_HEADER);
-            
-        kick_wdt(SYS_WDG_bp);
-           
-	}
-}
-//------------------------------------------------------------------------------
-void xprint_terminal(bool print_header)
-{
-uint8_t channel;
-bool start = true;
+        xprint_dr(&dataRcd);
 
-    if (print_header) {
-        xprintf_P( PSTR("(%s) ID:%s;TYPE:%s;VER:%s;"), RTC_logprint(FORMAT_SHORT), systemConf.dlgid, FW_TYPE, FW_REV);
-    }
-    
-    // Analog Channels:
-    for ( channel=0; channel < NRO_ANALOG_CHANNELS; channel++) {
-        if ( strcmp ( systemConf.ainputs_conf[channel].name, "X" ) != 0 ) {
-            if ( start ) {
-                xprintf_P( PSTR("%s:%0.2f"), systemConf.ainputs_conf[channel].name, dataRcd.l_ainputs[channel]);
-                start = false;
-            } else {
-                xprintf_P( PSTR(";%s:%0.2f"), systemConf.ainputs_conf[channel].name, dataRcd.l_ainputs[channel]);
-            }
-        }
-    }
-        
-    // Counter Channels:
-    for ( channel=0; channel < NRO_COUNTER_CHANNELS; channel++) {
-        if ( strcmp ( systemConf.counters_conf[channel].name, "X" ) != 0 ) {
-            if ( start ) {
-                xprintf_P( PSTR("%s:%0.3f"), systemConf.counters_conf[channel].name, dataRcd.l_counters[channel]);
-                start = false;
-            } else {
-                xprintf_P( PSTR(";%s:%0.3f"), systemConf.counters_conf[channel].name, dataRcd.l_counters[channel]);
-            }
-        }
-    }
-    xprintf_P( PSTR("\r\n"));
 }
 //------------------------------------------------------------------------------
