@@ -72,6 +72,14 @@ i2c_quit:
 	// Pass4) STOP
 	twi->MCTRLB = TWI_MCMD_STOP_gc;
 
+    if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
+        xprintf("STOP\r\n");
+    }
+    
+    if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
+        xprintf("STOP\r\n");
+    }
+
 	// En caso de error libero la interface forzando el bus al estado IDLE
 	if ( !retV )
 		drv_I2C_reset( twi );
@@ -130,6 +138,14 @@ uint8_t packet[3];
 
     // Pass5) STOP
 	twi->MCTRLB = TWI_MCMD_STOP_gc;
+    
+    if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
+        xprintf("STOP\r\n");
+    }
+    
+    if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
+        xprintf("STOP\r\n");
+    }
     
 	xReturn = xBytes;
 	retV = true;
@@ -249,11 +265,11 @@ bool ret_code = false;
 i2c_exit:
 
     if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-        xprintf("A: 0x%02x\r\n", twi->MSTATUS );
+        xprintf("ADDR=0x%02x, ST=0x%02x\r\n", txbyte, twi->MSTATUS );
     }
 
     if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
-        xprintf("A: 0x%02x\r\n", twi->MSTATUS );
+        xprintf("ADDR=0x%02x, ST=0x%02x\r\n", txbyte, twi->MSTATUS );
     }
 
 	return(ret_code);
@@ -275,6 +291,15 @@ bool retS = false;
 	for ( bytesWritten=0; bytesWritten < length; bytesWritten++ ) {
 		txbyte = *dataBuffer++;
 		twi->MDATA = txbyte;		// send byte
+        
+        if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
+            xprintf("DP%d=0x%02x, ST=0x%02x\r\n", bytesWritten, txbyte, twi->MSTATUS );
+        }
+
+        if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
+            xprintf("DP%d=0x%02x, ST=0x%02x\r\n", bytesWritten, txbyte, twi->MSTATUS );
+        }
+        
 		if ( ! pv_i2c_waitForComplete(twi) ) {
             xprintf("pv_I2C_send_data: ERROR (status=%d)\r\n", twi->MSTATUS );
             goto i2c_exit;
@@ -285,20 +310,13 @@ bool retS = false;
             xprintf("pv_I2C_send_data: NACK (status=%d)\r\n", twi->MSTATUS );
             goto i2c_exit;
         }
+        
 	}
 
 	// Envie todo el buffer
     retS = true;
 
 i2c_exit:
-
-    if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-        xprintf("B: 0x%02x\r\n", twi->MSTATUS );
-    }
-
-    if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
-        xprintf("B: 0x%02x\r\n", twi->MSTATUS );
-    }
 
 	return(retS);
 
@@ -345,11 +363,11 @@ uint8_t currentStatus = 0;
 	*rxByte = twi->MDATA;
 
     if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-        xprintf("C: 0x%02x, st=0x%02x\r\n",*rxByte,currentStatus );
+        xprintf("RB=0x%02x, ST=0x%02x\r\n",*rxByte,currentStatus );
     }
     
     if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
-        xprintf("C: 0x%02x, st=0x%02x\r\n",*rxByte,currentStatus );
+        xprintf("RB=0x%02x, ST=0x%02x\r\n",*rxByte,currentStatus );
     }
     
 	if (response_flag == ACK) {
@@ -360,11 +378,11 @@ uint8_t currentStatus = 0;
 
 	// Primero evaluo no tener errores.
 	if ( (currentStatus & TWI_ARBLOST_bm) != 0 ) {
-        xprintf("pvI2C_read_byte: 0x%02x, st=0x%02x\r\n",*rxByte,currentStatus );
+        xprintf("pvI2C_read_byte ARBLOST: 0x%02x, st=0x%02x\r\n",*rxByte,currentStatus );
         goto i2c_exit;
     }
 	if ( (currentStatus & TWI_BUSERR_bm) != 0 ) {
-        xprintf("pvI2C_read_byte: 0x%02x, st=0x%02x\r\n",*rxByte,currentStatus );
+        xprintf("pvI2C_read_byte BUSERR: 0x%02x, st=0x%02x\r\n",*rxByte,currentStatus );
         goto i2c_exit;
     }
 
@@ -372,14 +390,6 @@ uint8_t currentStatus = 0;
    
 
 i2c_exit:
-
-    if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-        xprintf("D: 0x%02x, st=0x%02x\r\n",*rxByte,currentStatus );
-    }
-
-    if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
-        xprintf("D: 0x%02x, st=0x%02x\r\n",*rxByte,currentStatus );
-    }
 
 	return(ret_code);
 }

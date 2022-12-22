@@ -75,8 +75,8 @@ void sys_watchdog_check(void)
     
 static uint8_t wdg_count = 0;
 
-    //wdt_reset();
-    //return;
+    wdt_reset();
+    return;
         
     // EL wdg lo leo cada 300secs ( 5 x 60 )
     if ( wdg_count++ < 60 ) {

@@ -86,7 +86,7 @@ extern "C" {
 
 
 #define FW_REV "1.0.0"
-#define FW_DATE "@ 20221220"
+#define FW_DATE "@ 20221221"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR2"
@@ -95,8 +95,6 @@ extern "C" {
 
 #define tkCtl_TASK_PRIORITY	 	( tskIDLE_PRIORITY + 1 )
 #define tkCmd_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
-#define tkAin_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
-#define tkCnt_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
 #define tkSys_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
 #define tkRS485A_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
 #define tkRS485B_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
@@ -104,8 +102,6 @@ extern "C" {
 
 #define tkCtl_STACK_SIZE		384
 #define tkCmd_STACK_SIZE		384
-#define tkAin_STACK_SIZE		384
-#define tkCnt_STACK_SIZE		384
 #define tkSys_STACK_SIZE		384
 #define tkRS485A_STACK_SIZE		384
 #define tkRS485B_STACK_SIZE		384
@@ -116,12 +112,6 @@ StackType_t tkCtl_Buffer [tkCtl_STACK_SIZE];
 
 StaticTask_t tkCmd_Buffer_Ptr;
 StackType_t tkCmd_Buffer [tkCmd_STACK_SIZE];
-
-StaticTask_t tkAin_Buffer_Ptr;
-StackType_t tkAin_Buffer [tkAin_STACK_SIZE];
-
-StaticTask_t tkCnt_Buffer_Ptr;
-StackType_t tkCnt_Buffer [tkCnt_STACK_SIZE];
 
 StaticTask_t tkSys_Buffer_Ptr;
 StackType_t tkSys_Buffer [tkSys_STACK_SIZE];
@@ -139,13 +129,11 @@ SemaphoreHandle_t sem_SYSVars;
 StaticSemaphore_t SYSVARS_xMutexBuffer;
 #define MSTOTAKESYSVARSSEMPH ((  TickType_t ) 10 )
 
-TaskHandle_t xHandle_tkCtl, xHandle_tkCmd, xHandle_tkAin, xHandle_tkCnt, xHandle_tkSys, xHandle_tkRS485A, xHandle_tkRS485B, xHandle_tkWAN;
+TaskHandle_t xHandle_tkCtl, xHandle_tkCmd, xHandle_tkSys, xHandle_tkRS485A, xHandle_tkRS485B, xHandle_tkWAN;
 
 void tkCtl(void * pvParameters);
 void tkCmd(void * pvParameters);
 void tkSystem(void * pvParameters);
-void tkAinputs(void * pvParameters);
-void tkCounters(void * pvParameters);
 void tkRS485A(void * pvParameters);
 void tkRS485B(void * pvParameters);
 void tkWAN(void * pvParameters);
@@ -172,7 +160,7 @@ typedef struct {
 
 void kick_wdt( uint8_t bit_pos);
 
-void poll_data(void);
+bool poll_data(dataRcd_s *dataRcd);
 
 uint8_t u_hash(uint8_t seed, char ch );
 void config_default(void);
@@ -235,13 +223,11 @@ uint8_t sys_watchdog;
 
 #define CMD_WDG_bp    0
 #define SYS_WDG_bp    1
-#define AIN_WDG_bp    2
-#define CNT_WDG_bp    3
-#define XCMA_WDG_bp   4
-#define XCMB_WDG_bp   5
-#define XWAN_WDG_bp   6
+#define XCMA_WDG_bp   2
+#define XCMB_WDG_bp   3
+#define XWAN_WDG_bp   4
 
-#define WDG_bm 0x7F
+#define WDG_bm 0x1F
 
 #define WDG_INIT() ( sys_watchdog = WDG_bm )
 

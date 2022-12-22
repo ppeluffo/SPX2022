@@ -27,10 +27,15 @@ extern "C" {
     
 #define FF_SIZE_IN_KB	128		// Tamanio en KB de la eeprom externa.
 #define FF_RECD_SIZE	32		// Tamanio del registro
+#define FS_WRBUFF_SIZE  32
+#define FS_RDBUFF_SIZE  32
+#define FS_PAGE_SIZE    256
+    
 #define FF_ADDR_START	0		// Posicion inicial
 //#define FF_MAX_RCDS		64	// Cantidad de registros ( max 4096 en M24CM02 ).
-#define FF_MAX_RCDS		4096    // ( FF_SIZE_IN_KB * 1024 / FF_RECD_SIZE )
-
+//#define FF_MAX_RCDS		4096    // ( FF_SIZE_IN_KB * 1024 / FF_RECD_SIZE )
+#define FF_MAX_RCDS		512
+    
 #define FF_WRTAG	0xC5	// 1100 0101
 
 /*
@@ -62,8 +67,11 @@ typedef struct {
 
 fat_s FAT;
 
-char fs_rw_buffer[FF_RECD_SIZE];
 
+char fs_wr_buffer[FS_WRBUFF_SIZE];
+char fs_rd_buffer[FS_RDBUFF_SIZE];
+
+bool fs_debug;
 
 //-----------------------------------------------------------------------------
 // FUNCIONES PUBLICAS
@@ -71,14 +79,17 @@ char fs_rw_buffer[FF_RECD_SIZE];
 bool FAT_flush(void);
 bool FS_open(void);
 void FS_init(void);
-int16_t FS_writeRcd( const void *dr, uint8_t xSize );
-int16_t FS_readRcd( void *dr, uint8_t xSize );
-int16_t FS_readRcdByPos( uint16_t pos, void *dr, uint8_t xSize );
+bool FS_writeRcd( void *dr, uint8_t xSize );
+bool FS_readRcd( void *dr, uint8_t xSize );
+bool FS_readRcdByPos( uint16_t pos, void *dr, uint8_t xSize, bool detail );
 void FS_format(bool fullformat);
 uint8_t fs_chksum8(const char *buff, size_t len);
 void FAT_read( fat_s *dstfat);
 uint16_t FS_dump( bool (*funct)(char *buff));
 void FS_delete( int16_t ndrcds);
+
+void FS_set_debug(void);
+void FS_clear_debug(void);
 
 //------------------------------------------------------------------------------
 

@@ -13,6 +13,9 @@ SemaphoreHandle_t sem_FAT;
 StaticSemaphore_t FAT_xMutexBuffer;
 #define MSTOTAKEFATSEMPH ((  TickType_t ) 10 )
 
+bool fs_hard_write( char *buff, uint8_t buff_size, uint16_t ptr, uint8_t *cks );
+bool fs_hard_read( char *buff, uint8_t buff_size, uint16_t ptr, uint8_t *calc_cks, uint8_t *rd_cks);
+
 //#define DEBUG_FS
 //------------------------------------------------------------------------------
 bool FAT_flush(void)
@@ -79,69 +82,42 @@ quit:
 //------------------------------------------------------------------------------
 void FS_init(void)
 {
+    fs_debug = false;
 	sem_FAT = xSemaphoreCreateMutexStatic( &FAT_xMutexBuffer );
 }
 //------------------------------------------------------------------------------
-int16_t FS_writeRcd( const void *dr, uint8_t xSize )
+bool FS_writeRcd( void *dr, uint8_t xSize )
 {
     /*
      * La eeprom actua como un ringbuffer.
      * Escribo en la posicion apuntada por head y lo avanzo en modo circular.
-     * 
+     * El proceso de lectura hw lo hace en forma externa
      */
     
-uint16_t wrAddress;
-int16_t bytes_written = -1;
 int16_t xBytes;
-int next;
-int retV = -1;
+uint16_t next;
+bool retS = false;
+uint8_t cks;
 
+    if (xSize > FS_WRBUFF_SIZE ) {
+        xSize = FS_WRBUFF_SIZE;
+    }
+    
     while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
 		vTaskDelay( ( TickType_t)( 1 ) );
 
    // Buffer lleno
-
     if ( FAT.count == FAT.length) {
         xprintf_P(PSTR("ERROR: FS full.!! \r\n"));
-        retV = -1;
+        retS = false;
         goto quit;
     }
     
-    /*
-     * Guardo
-     * Primero pongo los datos en el buffer y agrego el checksum y end_tag.
-     * Calculo la direccion interna de la eeprom.
-     */
-
-    memset( fs_rw_buffer, 0xFF, FF_RECD_SIZE );
-	// copio los datos recibidos del dr al buffer ( 0..(xSize-1))
-	memcpy ( fs_rw_buffer, dr, xSize );
-	// Calculo y grabo el checksum a continuacion del frame (en la pos.xSize)
-	// El checksum es solo del dataFrame por eso paso dicho size.
-	fs_rw_buffer[FF_RECD_SIZE - 2] = fs_chksum8( fs_rw_buffer, (FF_RECD_SIZE - 2) );
-	// Grabo el tag para indicar que el registro esta escrito.
-	fs_rw_buffer[FF_RECD_SIZE - 1] = FF_WRTAG;
-	// 
-	wrAddress = FF_ADDR_START + FAT.head * FF_RECD_SIZE;
-    vTaskDelay( ( TickType_t)( 10 / portTICK_PERIOD_MS ) );
-	bytes_written = EE_write( wrAddress, (char *)&fs_rw_buffer, FF_RECD_SIZE );
-    // Control de errores:
-	if ( bytes_written != FF_RECD_SIZE ) {
-		xprintf_P(PSTR("ERROR: I2C:EE:FS_writeRcd\r\n"));
-        goto quit;
-    }
-    
-#ifdef DEBUG_FS
-    uint8_t i;
-    
-    for (i=0; i<FF_RECD_SIZE; i++) {
-        if ( (i%8) == 0 ) {
-            xprintf_P(PSTR("\r\n%02d: "),i);
-        }
-        xprintf_P(PSTR("[0x%02x] "), fs_rw_buffer[i]);
-    }
-    xprintf_P(PSTR("\r\n"));
-#endif
+    // copio los datos recibidos del dr al buffer ( 0..(xSize-1)) y los escribo
+    memset( fs_wr_buffer, 0xFF, FS_WRBUFF_SIZE );
+	memcpy ( fs_wr_buffer, dr, xSize );
+    retS = fs_hard_write( fs_wr_buffer, FS_WRBUFF_SIZE, FAT.head, &cks);
+    xprintf_P(PSTR("FSwrite: head=%d,tail=%d,count=%d,cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, cks);
     
     // Avanzo el puntero en forma circular
     FAT.count++;
@@ -150,37 +126,34 @@ int retV = -1;
         next = 0;
     }
     FAT.head = next;
-    
     // Actualizo la fat por si se resetea el equipo
     xBytes = RTC_write( FAT_ADDRESS, (char *)&FAT, sizeof(fat_s) );
 	if ( xBytes == -1 ) {
 		xprintf_P(PSTR("ERROR: I2C:RTC:FAT_save\r\n"));
+        retS = false;
         goto quit;
     }
-    retV =bytes_written;
     
 quit:
 
     xSemaphoreGive( sem_FAT);
-    return(retV);
+    return(retS);
     
 }
 //------------------------------------------------------------------------------
-int16_t FS_readRcd( void *dr, uint8_t xSize )
+bool FS_readRcd( void *dr, uint8_t xSize )
 {
     /*
      * Leo de la eeprom de la posicion apuntada por tail.
      * Verifico que no este vacia.
+     * El proceso de lectura hw lo hace en forma externa
      * 
      */
 
-int next;
-int16_t retV = -1;
-uint8_t rdCheckSum = 0;
-uint8_t calcCheckSum = 0;
-uint16_t rdAddress = 0;
-int16_t bytes_read = 0U;
+uint16_t next;
 int16_t xBytes;
+bool retS = false;
+uint8_t calc_cks, rd_cks;
 
 	// Lo primero es obtener el semaforo
 	while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
@@ -188,39 +161,16 @@ int16_t xBytes;
 
     // Verifico que no este vacia.
     if ( FAT.count == 0 ) {   
-        retV = -1;
+        retS = false;
         goto quit;
     }
     
-    /*
-     * Leo y avanzo el puntero.
-     */
-	memset( fs_rw_buffer, 0xFF, FF_RECD_SIZE );
-	rdAddress = FF_ADDR_START + FAT.tail * FF_RECD_SIZE;
-	bytes_read = EE_read( rdAddress, (char *)&fs_rw_buffer, FF_RECD_SIZE);
-    // Copio los datos a la estructura de salida.: aun no se si estan correctos
-	memcpy( dr, &fs_rw_buffer, xSize );
-	if (bytes_read == -1 ) {
-		xprintf_P(PSTR("ERROR: I2C:EE:FS_readRcd\r\n"));
-        retV = -1;
-        goto quit;
+    retS = fs_hard_read( fs_rd_buffer, FS_RDBUFF_SIZE, FAT.tail, &calc_cks, &rd_cks);
+    xprintf_P(PSTR("FSread: head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
+    if ( retS ) {
+        memcpy( dr, &fs_rd_buffer, xSize );
     }
-    // Control de checksums
-    calcCheckSum = fs_chksum8( fs_rw_buffer, (FF_RECD_SIZE - 2) );
-    rdCheckSum = fs_rw_buffer[(FF_RECD_SIZE - 2)];
-	if ( rdCheckSum != calcCheckSum ) {
-        xprintf_P(PSTR("ERROR: I2C:EE:FS_readRcd checksum: calc=0x%02x, mem=0x%02x\r\n"),calcCheckSum, rdCheckSum );
-        retV = -1;
-		goto quit;
-	}
 
-	// Vemos si la ultima posicion tiene el tag de ocupado.
-	if ( ( fs_rw_buffer[FF_RECD_SIZE - 1] )  != FF_WRTAG ) {
-        xprintf_P(PSTR("ERROR: I2C:EE:FS_readRcd TAG\r\n"));
-        retV = -1;
-		goto quit;
-	}
-    
     // Está todo bien. Ajusto los punteros.
 	FAT.count--;
     next =FAT.tail + 1;
@@ -228,22 +178,23 @@ int16_t xBytes;
         next = 0;
     }
     FAT.tail = next;
-    
     // Actualizo la fat por si se resetea el equipo
     xBytes = RTC_write( FAT_ADDRESS, (char *)&FAT, sizeof(fat_s) );
 	if ( xBytes == -1 ) {
 		xprintf_P(PSTR("ERROR: I2C:RTC:FAT_save\r\n"));
+        retS = false;
         goto quit;
     }
-    retV = bytes_read;
+    
+    retS = true;
     
 quit:
 
     xSemaphoreGive( sem_FAT);
-    return(retV);
+    return(retS);
 }
 //------------------------------------------------------------------------------
-int16_t FS_readRcdByPos( uint16_t pos, void *dr, uint8_t xSize )
+bool FS_readRcdByPos( uint16_t pos, void *dr, uint8_t xSize, bool detail )
 {
     /*
      * Leo de la eeprom de la posicion apuntada por tail.
@@ -251,63 +202,33 @@ int16_t FS_readRcdByPos( uint16_t pos, void *dr, uint8_t xSize )
      * 
      */
 
-int16_t retV = -1;
-uint8_t rdCheckSum = 0;
-uint8_t calcCheckSum = 0;
-uint16_t rdAddress = 0;
-int16_t bytes_read = 0U;
+uint8_t calc_cks, rd_cks;
+bool retS = false;
 uint8_t i;
 
 	// Lo primero es obtener el semaforo
 	while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
 		vTaskDelay( ( TickType_t)( 1 ) );
 
-    /*
-     * Leo
-     */
-	memset( fs_rw_buffer, 0xFF, FF_RECD_SIZE );
-	rdAddress = FF_ADDR_START + pos * FF_RECD_SIZE;
-	bytes_read = EE_read( rdAddress, (char *)&fs_rw_buffer, FF_RECD_SIZE);
-    // Copio los datos a la estructura de salida.: aun no se si estan correctos
-	memcpy( dr, &fs_rw_buffer, xSize );
+    retS = fs_hard_read( fs_rd_buffer, FS_RDBUFF_SIZE, pos, &calc_cks, &rd_cks);
+    xprintf_P(PSTR("FSreadByPos: head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
  
- //#ifdef DEBUG_FS
-    for (i=0; i<FF_RECD_SIZE; i++) {
-        if ( (i%8) == 0 ) {
-            xprintf_P(PSTR("\r\n%02d: "),i);
+    if (detail) {    
+        for (i=0; i<FS_RDBUFF_SIZE; i++) {
+            if ( (i%8) == 0 ) {
+                xprintf_P(PSTR("\r\n%02d: "),i);
+            }
+            xprintf_P(PSTR("[0x%02x] "), fs_rd_buffer[i]);
         }
-        xprintf_P(PSTR("[0x%02x] "), fs_rw_buffer[i]);
+        xprintf_P(PSTR("\r\n"));       
     }
-    xprintf_P(PSTR("\r\n"));
-//#endif
     
-	if (bytes_read == -1 ) {
-		xprintf_P(PSTR("ERROR: I2C:EE:FS_readRcd\r\n"));
-        retV = -1;
-        goto quit;
+    if ( retS ) {
+        memcpy( dr, fs_rd_buffer, xSize );
     }
-    // Control de checksums
-    calcCheckSum = fs_chksum8( fs_rw_buffer, (FF_RECD_SIZE - 2) );
-    rdCheckSum = fs_rw_buffer[(FF_RECD_SIZE - 2)];
-    xprintf_P(PSTR("FS_readRcdByPos:: checksum: calc=0x%02x, mem=0x%02x\r\n"),calcCheckSum, rdCheckSum );
-	if ( rdCheckSum != calcCheckSum ) {
-        retV = -1;
-		goto quit;
-	}
-
-	// Vemos si la ultima posicion tiene el tag de ocupado.
-	if ( ( fs_rw_buffer[FF_RECD_SIZE - 1] )  != FF_WRTAG ) {
-        xprintf_P(PSTR("ERROR: I2C:EE:FS_readRcd TAG\r\n"));
-        retV = -1;
-		goto quit;
-	}
-    
-    retV = bytes_read;
-    
-quit:
-
+ 
     xSemaphoreGive( sem_FAT);
-    return(retV);
+    return(retS);
 }
 //------------------------------------------------------------------------------
 void FS_format(bool fullformat)
@@ -318,9 +239,9 @@ void FS_format(bool fullformat)
 	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-uint16_t page = 0;
-uint16_t wrAddress = 0;
-int16_t xBytes = 0;
+uint16_t i = 0;
+bool retS = false;
+uint8_t cks;
 
     FAT_flush();
     
@@ -329,24 +250,23 @@ int16_t xBytes = 0;
         while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
             vTaskDelay( ( TickType_t)( 1 ) );
 
-        memset( fs_rw_buffer, 0xFF, FF_RECD_SIZE );
+        memset( fs_wr_buffer, 0xFF, FS_WRBUFF_SIZE );
 	
 		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 		// Para que no salga por watchdog, apago las tareas previamente !!!!
 		// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         //xprintf_P( PSTR("FF_format: hard clear\r\n"));
 		// Borro fisicamente los registros
-		for ( page = 0; page < FF_MAX_RCDS; page++ ) {
-			wrAddress = FF_ADDR_START + page * FF_RECD_SIZE;
-			xBytes = EE_write( wrAddress, (char *)&fs_rw_buffer, FF_RECD_SIZE );
-			if ( xBytes == -1 )
+		for ( i = 0; i < FF_MAX_RCDS; i++ ) {
+            retS = fs_hard_write( fs_wr_buffer, FS_WRBUFF_SIZE, i, &cks);
+			if ( !retS )
 				xprintf_P(PSTR("ERROR: I2C:EE:FS_format\r\n"));
 
 			vTaskDelay( ( TickType_t)( 10 ) );
 
-			if ( ( page > 0 ) && (page % 32) == 0 ) {
-				xprintf_P( PSTR(" %04d"),page);
-				if ( ( page > 0 ) && (page % 256) == 0 ) {
+			if ( ( i > 0 ) && (i % 32) == 0 ) {
+				xprintf_P( PSTR(" %04d"),i);
+				if ( ( i > 0 ) && (i % 256) == 0 ) {
 					xprintf_P( PSTR("\r\n"));
 				}
 			}
@@ -355,17 +275,6 @@ int16_t xBytes = 0;
         xSemaphoreGive( sem_FAT);
 	}
    
-}
-//------------------------------------------------------------------------------
-uint8_t fs_chksum8(const char *buff, size_t len)
-{
-uint8_t checksum = 0;
-
-	for ( checksum = 0 ; len != 0 ; len-- )
-		checksum += *(buff++);   // parenthesis not required!
-
-	checksum = ~checksum;
-	return (checksum);
 }
 //------------------------------------------------------------------------------
 uint16_t FS_dump( bool (*funct)(char *buff) )
@@ -377,39 +286,34 @@ uint16_t FS_dump( bool (*funct)(char *buff) )
      */
     
 uint16_t ptr;
-uint16_t rdAddress = 0;
 uint16_t i;
-int16_t bytes_read = 0U;
-bool fRet;
-
+bool retS = false;
+uint8_t calc_cks, rd_cks;
+  
 	while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
 		vTaskDelay( ( TickType_t)( 1 ) );
 
     ptr = FAT.tail;
-    
     for (i=0; i < FAT.count; i++) {
         //xprintf_P(PSTR("PTR=%d, I=%d\r\n"),ptr,i);
-        memset( fs_rw_buffer, 0x00, FF_RECD_SIZE );
-        rdAddress = FF_ADDR_START + ptr * FF_RECD_SIZE;
-        bytes_read = EE_read( rdAddress, (char *)&fs_rw_buffer, FF_RECD_SIZE);  
-        // Avanzo el puntero(circular)
+        retS = fs_hard_read( fs_rd_buffer, FS_RDBUFF_SIZE, ptr, &calc_cks, &rd_cks);
+        xprintf_P(PSTR("FSdump: ptr=%d, head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), ptr, FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
         ptr++;
+        // Avanzo el puntero en forma circular
         if ( ptr >= FAT.length) {
             ptr = 0;
         }
         // Ejecuto la funcion que procesa el buffer.
-        fRet = funct(&fs_rw_buffer[0]);
+        retS = funct(&fs_rd_buffer[0]);
         
         // Si algun registro me da error, salgo.
-        if ( !fRet)
+        if ( !retS)
             break;
         
     }
     
-    xprintf_P( PSTR("MEM bd EMPTY\r\n"));
-    
-    xSemaphoreGive( sem_FAT);
-    
+    xprintf_P( PSTR("MEM bd EMPTY\r\n"));   
+    xSemaphoreGive( sem_FAT);   
     // Retorno la cantidad de registros procesados.
     return(i);
 
@@ -425,10 +329,10 @@ void FS_delete( int16_t ndrcds )
 
 uint16_t i;
 uint16_t max_rcds;
-uint16_t wrAddress = 0;
-int16_t xBytes = 0;
-int16_t bytes_written = -1;
 int next;
+uint8_t cks;
+bool retS = false;
+int16_t xBytes;
 
     while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
 		vTaskDelay( ( TickType_t)( 1 ) );
@@ -443,7 +347,8 @@ int next;
      /*
      * Borro y avanzo el puntero.
      */
-	memset( fs_rw_buffer, 0xFF, FF_RECD_SIZE );
+	memset( fs_wr_buffer, 0xFF, FS_WRBUFF_SIZE );
+    
     for (i=0; i<max_rcds; i++) {
         
         vTaskDelay( ( TickType_t)( 10 / portTICK_PERIOD_MS ) );
@@ -453,11 +358,8 @@ int next;
             goto quit;
         }
  
-        // Borro
-        wrAddress = FF_ADDR_START + FAT.tail * FF_RECD_SIZE;      
-        bytes_written = EE_write( wrAddress, (char *)&fs_rw_buffer, FF_RECD_SIZE );
-        // Control de errores:
-        if ( bytes_written != FF_RECD_SIZE ) {
+        retS = fs_hard_write( fs_wr_buffer, FS_WRBUFF_SIZE, FAT.tail, &cks);
+        if ( !retS) {    
             xprintf_P(PSTR("ERROR: I2C:EE:FS_delete(%d)\r\n"),FAT.tail);
             //goto quit;
         }
@@ -481,5 +383,128 @@ int next;
 quit:
 
     xSemaphoreGive( sem_FAT);
+}
+//------------------------------------------------------------------------------
+void FS_set_debug(void)
+{
+    fs_debug = true;
+}
+//------------------------------------------------------------------------------
+void FS_clear_debug(void) 
+{
+    fs_debug = false;
+}
+//------------------------------------------------------------------------------
+bool fs_hard_write( char *buff, uint8_t buff_size, uint16_t ptr, uint8_t *cks )
+{
+    /*
+     * Toma un buffer lineal.
+     * Calcula el checksum, termina el frame y lo escribe en la EEprom
+     
+     */
+uint16_t wrAddress;
+int16_t bytes_written = -1;
+
+	// Calculo y grabo el checksum a continuacion del frame (en la pos.xSize)
+	// El checksum es solo del dataFrame por eso paso dicho size.
+    *cks = fs_chksum8( buff, (buff_size - 2) );
+	buff[buff_size - 2] = *cks;
+	// Grabo el tag para indicar que el registro esta escrito.
+	buff[buff_size - 1] = FF_WRTAG;
+	// 
+	wrAddress = FF_ADDR_START + ptr * FS_PAGE_SIZE;
+    //wrAddress = FF_ADDR_START + ptr * FF_RECD_SIZE;
+    if ( ( wrAddress % 256) != 0 ) {
+    //if ( ( wrAddress % 32) != 0 ) {
+        xprintf_P(PSTR("ERROR:fs_hard_write wrAddress: ptr=%d, wrAddress=%d\r\n"), ptr, wrAddress);
+        return(false);
+    }
+    xprintf_P(PSTR("WR_ADDRESS=0x%04x, ptr=%d\r\n"), wrAddress, ptr);
+    
+	bytes_written = EE_write( wrAddress, buff, FF_RECD_SIZE, fs_debug );
+    // Necesito al memos tw=5ms entre escrituras.
+    vTaskDelay( ( TickType_t)( 20 / portTICK_PERIOD_MS ) );
+    // Control de errores:
+	if ( bytes_written != FF_RECD_SIZE ) {
+		xprintf_P(PSTR("ERROR: I2C:EE:FS_writeRcd\r\n"));
+        return(false);
+    }
+    
+#ifdef DEBUG_FS
+    uint8_t i;
+    
+    for (i=0; i<FF_RECD_SIZE; i++) {
+        if ( (i%8) == 0 ) {
+            xprintf_P(PSTR("\r\n%02d: "),i);
+        }
+        xprintf_P(PSTR("[0x%02x] "), fs_wr_buffer[i]);
+    }
+    xprintf_P(PSTR("\r\n"));
+#endif
+    
+    return(true);
+}
+//------------------------------------------------------------------------------
+bool fs_hard_read( char *buff, uint8_t buff_size, uint16_t ptr, uint8_t *calc_cks, uint8_t *rd_cks)
+{
+    /*
+     * Leo HW un registro apuntado por la direccion ptr.
+     */
+    
+uint8_t rdCheckSum = 0;
+uint8_t calcCheckSum = 0;
+uint16_t rdAddress = 0;
+int16_t bytes_read = 0U;
+bool retS = false;
+
+	memset( buff, 0x00, buff_size );
+	//rdAddress = FF_ADDR_START + ptr * FF_RECD_SIZE;
+    rdAddress = FF_ADDR_START + ptr * FS_PAGE_SIZE;
+    if ( ( rdAddress % 256) != 0 ) {
+    //if ( ( rdAddress % 32) != 0 ) {
+        xprintf_P(PSTR("ERROR:fs_hard_read rdAddress: ptr=%d, rdAddress=%d\r\n"), ptr, rdAddress);
+        return(false);
+    }
+    xprintf_P(PSTR("RD_ADDRESS=0x%04x, ptr=%d\r\n"), rdAddress, ptr);
+    
+	bytes_read = EE_read( rdAddress, buff, buff_size, fs_debug);
+	if (bytes_read == -1 ) {
+		xprintf_P(PSTR("ERROR: I2C:EE:FS_readRcd\r\n"));
+        retS = false;
+        goto quit;
+    }
+    
+    // Control de checksums
+    *calc_cks = fs_chksum8( buff, (buff_size - 2) );
+    *rd_cks = buff[(buff_size - 2)];
+	if ( rdCheckSum != calcCheckSum ) {
+        xprintf_P(PSTR("ERROR: I2C:EE:FS_readRcd checksum: calc=0x%02x, mem=0x%02x\r\n"),*calc_cks, *rd_cks );
+        retS = false;
+		goto quit;
+	}
+
+	// Vemos si la ultima posicion tiene el tag de ocupado.
+	if ( ( buff[buff_size - 1] )  != FF_WRTAG ) {
+        xprintf_P(PSTR("ERROR: I2C:EE:FS_readRcd TAG\r\n"));
+        retS = false;
+		goto quit;
+	}
+    
+    retS = true;
+  
+quit:
+    return(retS);
+    
+}
+//------------------------------------------------------------------------------
+uint8_t fs_chksum8(const char *buff, size_t len)
+{
+uint8_t checksum = 0;
+
+	for ( checksum = 0 ; len != 0 ; len-- )
+		checksum += *(buff++);   // parenthesis not required!
+
+	checksum = ~checksum;
+	return (checksum);
 }
 //------------------------------------------------------------------------------

@@ -66,11 +66,13 @@ uint16_t sleep_timeout;
         vTaskDelay( ( TickType_t)( 10 / portTICK_PERIOD_MS ) );
         
         // Luego de 30 secs de inactividad, duermo 20 secs
+        /*
         if ( sleep_timeout-- == 0 ) {
             //xprintf_P(PSTR("Going to sleep\r\n"));
             vTaskDelay( ( TickType_t)( 20000 / portTICK_PERIOD_MS ) );
             sleep_timeout = 1;
         }
+         */ 
         
 	}    
 }
@@ -81,8 +83,16 @@ static void cmdTestFunction(void)
     FRTOS_CMD_makeArgv();
 
 dataRcd_s dr;
-uint8_t bytes_written;
-uint8_t i;
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("FSDEBUGON"))  ) {
+        FS_set_debug();
+        return;
+    }
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("FSDEBUGOFF"))  ) {
+        FS_clear_debug();
+        return;
+    }
 
     if (!strcmp_P( strupr(argv[1]), PSTR("KILL"))  ) {
         if (!strcmp_P( strupr(argv[2]), PSTR("WAN"))  ) {  
@@ -105,12 +115,20 @@ uint8_t i;
     }
 
     if (!strcmp_P( strupr(argv[1]), PSTR("POLL"))  ) {
-        poll_data();
+        poll_data(&dr);
+        WAN_process_data_rcd(&dr);
+        xprint_dr(&dr);
         return;
     }
 
     if (!strcmp_P( strupr(argv[1]), PSTR("READRCD"))  ) {
-        FS_readRcdByPos( atoi(argv[2]), &dr, sizeof(dataRcd_s) );
+        FS_readRcdByPos( atoi(argv[2]), &dr, sizeof(dataRcd_s), false );
+        xprint_dr(&dr);
+        return;
+    }
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("READDRCD"))  ) {
+        FS_readRcdByPos( atoi(argv[2]), &dr, sizeof(dataRcd_s), true );
         xprint_dr(&dr);
         return;
     }
@@ -132,7 +150,7 @@ uint8_t i;
 		return;
 	}
 
-    xprintf_P( PSTR("Test: poll, readrcd {pos}, write, kill {wan,sys}\r\n"));
+    xprintf_P( PSTR("Test: poll, readrcd {pos},readdrcd {pos}, fsdebugon, fsdebugoff, write, kill {wan,sys}\r\n"));
     return;
     
 /*
@@ -182,7 +200,7 @@ static void cmdHelpFunction(void)
         
     if ( !strcmp_P( strupr(argv[1]), PSTR("WRITE"))) {
 		xprintf_P( PSTR("-write:\r\n"));
-        xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos string}\r\n"));
+        xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos string} {debug}\r\n"));
         xprintf_P( PSTR("  rtc YYMMDDhhmm\r\n"));
         xprintf_P( PSTR("  rele {on/off}, vsensors420 {on/off}\r\n"));
         xprintf_P( PSTR("  ina {confValue}\r\n"));
@@ -190,7 +208,7 @@ static void cmdHelpFunction(void)
         
     }  else if ( !strcmp_P( strupr(argv[1]), PSTR("READ"))) {
 		xprintf_P( PSTR("-read:\r\n"));
-        xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos} {lenght}\r\n"));
+        xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos} {lenght} {debug}\r\n"));
         xprintf_P( PSTR("  avrid,rtc {long,short}\r\n"));
         xprintf_P( PSTR("  cnt {0,1}\r\n"));
         xprintf_P( PSTR("  ina {conf|chXshv|chXbusv|mfid|dieid}\r\n"));
@@ -280,7 +298,7 @@ static void cmdReadFunction(void)
     // EE
 	// read ee address length
 	if (!strcmp_P( strupr(argv[1]), PSTR("EE")) ) {
-		EE_test_read ( argv[2], argv[3] );
+		EE_test_read ( argv[2], argv[3], argv[4] );
 		return;
 	}
     
@@ -471,7 +489,7 @@ static void cmdWriteFunction(void)
    	// EE
 	// write ee pos string
 	if ((strcmp_P( strupr(argv[1]), PSTR("EE")) == 0) ) {
-		( EE_test_write ( argv[2], argv[3] ) > 0)?  pv_snprintfP_OK() : pv_snprintfP_ERR();
+		( EE_test_write ( argv[2], argv[3], argv[4] ) > 0)?  pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;
 	}
     

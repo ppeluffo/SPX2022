@@ -13,6 +13,8 @@
 #include "i2c.h"
 #include "xprintf.h"
 
+#define EE_DEBUG_ON     true
+#define EE_DEBUG_OFF    false
 //------------------------------------------------------------------------------------
 // La memoria EE M24M02 es de 1024 paginas de 256 bytes o sea de 256Kbytes.
 // Se accede con 16 bits ( 2 bytes de direcciones ) por lo que con los bit A16 y A17
@@ -23,11 +25,11 @@
 //--------------------------------------------------------------------------------
 // API START
 
-int16_t EE_read( uint16_t rdAddress, char *data, uint8_t length );
-int16_t EE_write( uint16_t wrAddress, char *data, uint8_t length );
+int16_t EE_read( uint16_t rdAddress, char *data, uint8_t length, bool debug );
+int16_t EE_write( uint16_t wrAddress, char *data, uint8_t length, bool debug );
 
-int16_t EE_test_write( char *addr, char *str );
-int16_t EE_test_read( char *addr, char *size );
+int16_t EE_test_write( char *addr, char *str, char *debug );
+int16_t EE_test_read( char *addr, char *size, char *debug );
 
 // API END
 //--------------------------------------------------------------------------------

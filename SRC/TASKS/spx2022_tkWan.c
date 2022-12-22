@@ -1158,7 +1158,7 @@ bool WAN_process_data_rcd( dataRcd_s *dataRcd)
      * 
      */
    
-int8_t bytes_written = 0;
+bool retS = false;
 fat_s l_fat;   
 
     if ( f_link_up ) {
@@ -1174,12 +1174,13 @@ fat_s l_fat;
         while ( xTaskNotify(xHandle_tkWAN, SGN_FRAME_READY , eSetBits ) != pdPASS ) {
 			vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
 		}
+        retS = true;
         
     } else {
         // Guardo en memoria
         xprintf_P(PSTR("WAN: Save frame in EE.\r\n"));
-        bytes_written = FS_writeRcd( dataRcd, sizeof(dataRcd_s) );
-        if ( bytes_written == -1 ) {
+        retS = FS_writeRcd( dataRcd, sizeof(dataRcd_s) );
+        if ( ! retS  ) {
             // Error de escritura o memoria llena ??
             xprintf_P(PSTR("WAN:: WR ERROR\r\n"));
         }
@@ -1188,7 +1189,7 @@ fat_s l_fat;
         xprintf_P( PSTR("wrPtr=%d,rdPtr=%d,count=%d\r\n"),l_fat.head,l_fat.tail, l_fat.count );
         
     }
-    return(true);
+    return(retS);
 }
 //------------------------------------------------------------------------------
 void WAN_put(uint8_t c)
