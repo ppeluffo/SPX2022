@@ -28,15 +28,7 @@ bool retV = false;
 int xReturn = -1;
 uint8_t packet[3];
 
-    if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-		xprintf( "drv_I2C_master_write: START\r\n");
-        xprintf( "  devAddr=%02X\r\n",devAddress);
-        xprintf( "  dataAddr=%04X\r\n",dataAddress );
-        xprintf( "  dataAddrLength=%d\r\n",dataAddress_length );
-        xprintf( "  bytes2write=%d\r\n", xBytes );
-	}
-
-    if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
+    if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ){
 		xprintf( "drv_I2C_master_write: START\r\n");
         xprintf( "  devAddr=%02X\r\n",devAddress);
         xprintf( "  dataAddr=%04X\r\n",dataAddress );
@@ -57,8 +49,12 @@ uint8_t packet[3];
 	}
 
 	// Pass2: DATA_ADDRESS Mando la direccion interna del slave donde voy a escribir.
-	packet[1] = (dataAddress >> 8);
-	packet[0] = (dataAddress & 0x00FF );
+    if ( dataAddress_length == 2 ) {
+        packet[0] = (dataAddress >> 8);         // HIGH_BYTE
+        packet[1] = (dataAddress & 0x00FF );    // LOW_BYTE
+    }  else {
+        packet[0] = (dataAddress & 0x00FF );    // LOW_BYTE
+    }
 	if ( ! pv_i2c_send_Data_packet ( twi, packet, dataAddress_length ))  goto i2c_quit;
 
 	// Pass3: Mando el buffer de datos. Debo recibir 0x28 (DATA_ACK) en c/u
@@ -99,15 +95,7 @@ bool retV = false;
 int xReturn = -1;
 uint8_t packet[3];
 
-    if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-		xprintf( "drv_I2C_master_write: START\r\n");
-        xprintf( "  devAddr=%02X\r\n",devAddress);
-        xprintf( "  dataAddr=%04X\r\n",dataAddress );
-        xprintf( "  dataAddrLength=%d\r\n",dataAddress_length );
-        xprintf( "  bytes2read=%d\r\n", xBytes );
-	}
-
-    if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
+    if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ){
 		xprintf( "drv_I2C_master_write: START\r\n");
         xprintf( "  devAddr=%02X\r\n",devAddress);
         xprintf( "  dataAddr=%04X\r\n",dataAddress );
@@ -126,8 +114,12 @@ uint8_t packet[3];
 	if ( ! pv_i2c_send_Address_packet( twi, devAddress, I2C_DIRECTION_BIT_WRITE) ) goto i2c_quit;
 
 	// Pass2: DATA_ADDRESS Mando la direccion interna del slave donde voy a escribir.
-	packet[1] = (dataAddress >> 8);
-	packet[0] = (dataAddress & 0x00FF );   
+    if ( dataAddress_length == 2 ) {
+        packet[0] = (dataAddress >> 8);         // HIGH_BYTE
+        packet[1] = (dataAddress & 0x00FF );    // LOW_BYTE
+    }  else {
+        packet[0] = (dataAddress & 0x00FF );    // LOW_BYTE
+    }  
 	if ( ! pv_i2c_send_Data_packet ( twi, packet, dataAddress_length ))  goto i2c_quit;
 
 	// Pass3: Mando un START y el SLAVE_ADDRESS (SLA_W).
@@ -264,11 +256,8 @@ bool ret_code = false;
 
 i2c_exit:
 
-    if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-        xprintf("ADDR=0x%02x, ST=0x%02x\r\n", txbyte, twi->MSTATUS );
-    }
-
-    if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
+    // DEBUG
+    if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
         xprintf("ADDR=0x%02x, ST=0x%02x\r\n", txbyte, twi->MSTATUS );
     }
 
@@ -282,7 +271,12 @@ bool pv_i2c_send_Data_packet( volatile TWI_t *twi, uint8_t *dataBuffer, size_t l
 uint8_t bytesWritten;
 uint8_t txbyte;
 bool retS = false;
-        
+    
+    // DEBUG
+    if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
+        xprintf_P(PSTR("SEND DATAPKT:"));
+    }
+
 	// No hay datos para enviar: dummy write.
 	if ( length == 0 )
 		return(true);
@@ -292,13 +286,15 @@ bool retS = false;
 		txbyte = *dataBuffer++;
 		twi->MDATA = txbyte;		// send byte
         
-        if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-            xprintf("DP%d=0x%02x, ST=0x%02x\r\n", bytesWritten, txbyte, twi->MSTATUS );
+        // DEBUG
+        if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
+            if ( (bytesWritten % 8) == 0 ) {
+                xprintf_P(PSTR("\r\n%02d: "), bytesWritten);
+            }
+            
+            xprintf("[0x%02x,ST=0x%02x] ", txbyte, twi->MSTATUS );
         }
 
-        if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
-            xprintf("DP%d=0x%02x, ST=0x%02x\r\n", bytesWritten, txbyte, twi->MSTATUS );
-        }
         
 		if ( ! pv_i2c_waitForComplete(twi) ) {
             xprintf("pv_I2C_send_data: ERROR (status=%d)\r\n", twi->MSTATUS );
@@ -318,6 +314,10 @@ bool retS = false;
 
 i2c_exit:
 
+    // DEBUG
+    if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
+         xprintf_P(PSTR("\r\n"));   
+    }
 	return(retS);
 
 }
@@ -327,22 +327,47 @@ bool pv_i2c_rcvd_Data_packet( volatile TWI_t *twi, uint8_t *dataBuffer, size_t l
 
 char rxByte;
 bool retS = false;
+uint8_t i;
 
+    // DEBUG
+    if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
+        xprintf_P(PSTR("RCVD DATAPKT:"));
+    }
+
+    i = 0;
 	while(length > 1) {
 		if ( ! pv_i2c_read_byte( twi, ACK, &rxByte) ) goto i2c_quit;
 		*dataBuffer++ = rxByte;
 		// decrement length
 		length--;
+        
+        // DEBUG
+        if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
+            if ( (i % 8) == 0 ) {
+                xprintf_P(PSTR("\r\n%02d: "), i);
+            }
+            xprintf("[0x%02x,ST=0x%02x] ", rxByte, twi->MSTATUS );
+        }
+        i++;
 	}
 
 	// accept receive data and nack it (last-byte signal)
 	// Ultimo byte.
 	if ( ! pv_i2c_read_byte( twi, NACK, &rxByte) ) goto i2c_quit;
 	*dataBuffer++ = rxByte;
+    // DEBUG
+    if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
+        xprintf("[0x%02x,ST=0x%02x]", rxByte, twi->MSTATUS );
+    }
 
 	retS = true;
 
 i2c_quit:
+
+    // DEBUG
+    if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
+         xprintf_P(PSTR("\r\n"));
+    }
 
 	return(retS);
 }
@@ -362,13 +387,9 @@ uint8_t currentStatus = 0;
 
 	*rxByte = twi->MDATA;
 
-    if ( ( twi == &TWI0) && drv_i2c0_debug_flag ) {
-        xprintf("RB=0x%02x, ST=0x%02x\r\n",*rxByte,currentStatus );
-    }
-    
-    if ( ( twi == &TWI1) && drv_i2c1_debug_flag ) {
-        xprintf("RB=0x%02x, ST=0x%02x\r\n",*rxByte,currentStatus );
-    }
+ //   if ( (( twi == &TWI0) && drv_i2c0_debug_flag ) || (( twi == &TWI1) && drv_i2c1_debug_flag ) ) {
+ //       xprintf("[RB=0x%02x, ST=0x%02x] ",*rxByte,currentStatus );
+ //   }
     
 	if (response_flag == ACK) {
         twi->MCTRLB |= TWI_ACKACT_ACK_gc | TWI_MCMD_RECVTRANS_gc; // ACK y Mas bytes     

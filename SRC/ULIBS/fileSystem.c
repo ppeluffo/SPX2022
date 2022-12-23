@@ -117,7 +117,8 @@ uint8_t cks;
     memset( fs_wr_buffer, 0xFF, FS_WRBUFF_SIZE );
 	memcpy ( fs_wr_buffer, dr, xSize );
     retS = fs_hard_write( fs_wr_buffer, FS_WRBUFF_SIZE, FAT.head, &cks);
-    xprintf_P(PSTR("FSwrite: head=%d,tail=%d,count=%d,cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, cks);
+    if (fs_debug)
+        xprintf_P(PSTR("FSwrite: head=%d,tail=%d,count=%d,cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, cks);
     
     // Avanzo el puntero en forma circular
     FAT.count++;
@@ -166,7 +167,10 @@ uint8_t calc_cks, rd_cks;
     }
     
     retS = fs_hard_read( fs_rd_buffer, FS_RDBUFF_SIZE, FAT.tail, &calc_cks, &rd_cks);
-    xprintf_P(PSTR("FSread: head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
+    
+    if (fs_debug)
+        xprintf_P(PSTR("FSread: head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
+    
     if ( retS ) {
         memcpy( dr, &fs_rd_buffer, xSize );
     }
@@ -211,7 +215,9 @@ uint8_t i;
 		vTaskDelay( ( TickType_t)( 1 ) );
 
     retS = fs_hard_read( fs_rd_buffer, FS_RDBUFF_SIZE, pos, &calc_cks, &rd_cks);
-    xprintf_P(PSTR("FSreadByPos: head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
+    
+    if (fs_debug)
+        xprintf_P(PSTR("FSreadByPos: head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
  
     if (detail) {    
         for (i=0; i<FS_RDBUFF_SIZE; i++) {
@@ -277,27 +283,39 @@ uint8_t cks;
    
 }
 //------------------------------------------------------------------------------
-uint16_t FS_dump( bool (*funct)(char *buff) )
+int16_t FS_dump( bool (*funct)(char *buff), int16_t blocksize)
 {
     /*
      * Leo todos los registros y los proceso de a uno con la funcion
      * pasada como parámetro.
      * Esta puede imprimirlos en pantalla o copiarlos y enviarlos.
+     * blocksize es la cantidad de registros a procesar (dump)
+     * Si es -1, los proceso todos.
      */
     
-uint16_t ptr;
-uint16_t i;
+int16_t ptr;
+int16_t i;
 bool retS = false;
 uint8_t calc_cks, rd_cks;
-  
+int16_t retV = -1;
+
 	while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
 		vTaskDelay( ( TickType_t)( 1 ) );
 
+    if (  FAT.count == 0 ) {
+        xprintf_P(PSTR("FS Dump: MEM EMPTY\r\n"));
+        retV = 0;
+        goto quit;
+    }
+
     ptr = FAT.tail;
-    for (i=0; i < FAT.count; i++) {
+    for (i=0; i<FAT.count && i<blocksize; i++) {
         //xprintf_P(PSTR("PTR=%d, I=%d\r\n"),ptr,i);
         retS = fs_hard_read( fs_rd_buffer, FS_RDBUFF_SIZE, ptr, &calc_cks, &rd_cks);
-        xprintf_P(PSTR("FSdump: ptr=%d, head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), ptr, FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
+        
+        if (fs_debug)
+            xprintf_P(PSTR("FSdump: ptr=%d, head=%d,tail=%d,count=%d,calc_cks=0x%02x,rd_cks=0x%02x\r\n"), ptr, FAT.head, FAT.tail, FAT.count, calc_cks, rd_cks);
+        
         ptr++;
         // Avanzo el puntero en forma circular
         if ( ptr >= FAT.length) {
@@ -305,17 +323,31 @@ uint8_t calc_cks, rd_cks;
         }
         // Ejecuto la funcion que procesa el buffer.
         retS = funct(&fs_rd_buffer[0]);
-        
+ 
         // Si algun registro me da error, salgo.
-        if ( !retS)
-            break;
+        if ( !retS) {
+            retV = -1;
+            goto quit;
+        }
         
     }
+    retV = i;
     
-    xprintf_P( PSTR("MEM bd EMPTY\r\n"));   
+    xprintf_P(PSTR("FS Dump %d\r\n"), i);
+    
+    if ( FAT.count == 0)
+        xprintf_P( PSTR("MEM bd EMPTY\r\n"));  
+    
+quit:
+    
     xSemaphoreGive( sem_FAT);   
     // Retorno la cantidad de registros procesados.
-    return(i);
+
+    //if ( FAT.count == 0) {
+    //    FAT_flush()
+    //}
+
+    return(retV);
 
 }
 //------------------------------------------------------------------------------
@@ -336,6 +368,11 @@ int16_t xBytes;
 
     while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
 		vTaskDelay( ( TickType_t)( 1 ) );
+
+    if (  FAT.count == 0 ) {
+        xprintf_P(PSTR("FS Delete: MEM EMPTY\r\n"));
+        goto quit;
+    }
 
     // Calculo los limites
     if (ndrcds == -1) {
@@ -380,6 +417,8 @@ int16_t xBytes;
         }
     }
     
+    xprintf_P(PSTR("FS Delete %d\r\n"), ndrcds);
+    
 quit:
 
     xSemaphoreGive( sem_FAT);
@@ -414,12 +453,14 @@ int16_t bytes_written = -1;
 	// 
 	wrAddress = FF_ADDR_START + ptr * FS_PAGE_SIZE;
     //wrAddress = FF_ADDR_START + ptr * FF_RECD_SIZE;
-    if ( ( wrAddress % 256) != 0 ) {
+    if ( ( wrAddress % FS_PAGE_SIZE) != 0 ) {
     //if ( ( wrAddress % 32) != 0 ) {
         xprintf_P(PSTR("ERROR:fs_hard_write wrAddress: ptr=%d, wrAddress=%d\r\n"), ptr, wrAddress);
         return(false);
     }
-    xprintf_P(PSTR("WR_ADDRESS=0x%04x, ptr=%d\r\n"), wrAddress, ptr);
+    
+    if ( fs_debug )
+        xprintf_P(PSTR("WR_ADDRESS=0x%04x, ptr=%d\r\n"), wrAddress, ptr);
     
 	bytes_written = EE_write( wrAddress, buff, FF_RECD_SIZE, fs_debug );
     // Necesito al memos tw=5ms entre escrituras.
@@ -460,12 +501,14 @@ bool retS = false;
 	memset( buff, 0x00, buff_size );
 	//rdAddress = FF_ADDR_START + ptr * FF_RECD_SIZE;
     rdAddress = FF_ADDR_START + ptr * FS_PAGE_SIZE;
-    if ( ( rdAddress % 256) != 0 ) {
+    if ( ( rdAddress % FS_PAGE_SIZE) != 0 ) {
     //if ( ( rdAddress % 32) != 0 ) {
         xprintf_P(PSTR("ERROR:fs_hard_read rdAddress: ptr=%d, rdAddress=%d\r\n"), ptr, rdAddress);
         return(false);
     }
-    xprintf_P(PSTR("RD_ADDRESS=0x%04x, ptr=%d\r\n"), rdAddress, ptr);
+    
+    if ( fs_debug )
+        xprintf_P(PSTR("RD_ADDRESS=0x%04x, ptr=%d\r\n"), rdAddress, ptr);
     
 	bytes_read = EE_read( rdAddress, buff, buff_size, fs_debug);
 	if (bytes_read == -1 ) {

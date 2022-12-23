@@ -202,7 +202,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("-write:\r\n"));
         xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos string} {debug}\r\n"));
         xprintf_P( PSTR("  rtc YYMMDDhhmm\r\n"));
-        xprintf_P( PSTR("  rele {on/off}, vsensors420 {on/off}\r\n"));
+        xprintf_P( PSTR("  rele {open/close}, vsensors420 {on/off}\r\n"));
         xprintf_P( PSTR("  ina {confValue}\r\n"));
         xprintf_P( PSTR("  rs485a {string}, rs485b {string}\r\n"));
         
@@ -258,7 +258,7 @@ static void cmdReadFunction(void)
     // MEMORY
 	// read memory
 	if (!strcmp_P( strupr(argv[1]), PSTR("MEMORY\0"))  ) {
-		FS_dump(xprint_from_dump);
+		FS_dump(xprint_from_dump, -1);
 		return;
 	}
     
@@ -402,7 +402,7 @@ fat_s l_fat;
      
     // Memoria
     FAT_read(&l_fat);
-	xprintf_P( PSTR("memory: rcdSize=%d, size=%d, wrPtr=%d, rdPtr=%d,count=%d\r\n"),sizeof(dataRcd_s), FF_MAX_RCDS, l_fat.head,l_fat.tail, l_fat.count );
+	xprintf_P( PSTR("FileSystem: blockSize=%d,rcdSize=%d,blocks=%d,wrPtr=%d,rdPtr=%d,count=%d\r\n"),FS_PAGE_SIZE, sizeof(dataRcd_s), FF_MAX_RCDS, l_fat.head,l_fat.tail, l_fat.count );
  
     xprintf_P(PSTR("Config:\r\n"));
     xprintf_P(PSTR(" date: %s\r\n"), RTC_logprint(FORMAT_LONG));
@@ -470,15 +470,15 @@ static void cmdWriteFunction(void)
         return;
 	}
     
-	// write rele on/off
+	// write rele open/close
 	if (!strcmp_P( strupr(argv[1]), PSTR("RELE")) ) {
-        if (!strcmp_P( strupr(argv[2]), PSTR("ON")) ) {
-            SET_RELEOUT();
+        if (!strcmp_P( strupr(argv[2]), PSTR("OPEN")) ) {
+            RELE_OPEN();
             pv_snprintfP_OK();
             return;
         }
-        if (!strcmp_P( strupr(argv[2]), PSTR("OFF")) ) {
-            CLEAR_RELEOUT();
+        if (!strcmp_P( strupr(argv[2]), PSTR("CLOSE")) ) {
+            RELE_CLOSE();
             pv_snprintfP_OK();
             return;
         }

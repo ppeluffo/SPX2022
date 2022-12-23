@@ -27,9 +27,9 @@ extern "C" {
 #define CLEAR_OCOUT()     ( OCOUT_PORT.OUT &= ~OCOUT_PIN_bm )
 #define TOGGLE_OCOUT()    ( OCOUT_PORT.OUT ^= 1UL << OCOUT_PIN_bp);
 
-#define SET_RELEOUT()      CLEAR_OCOUT() 
-#define CLEAR_RELEOUT()    SET_OCOUT()
-#define TOGGLE_RELEOUT()   TOGGLE_OCOUT()
+#define RELE_OPEN()         CLEAR_OCOUT() 
+#define RELE_CLOSE()        SET_OCOUT()
+#define TOGGLE_RELEOUT()    TOGGLE_OCOUT()
     
 void OCOUT_init(void);
     

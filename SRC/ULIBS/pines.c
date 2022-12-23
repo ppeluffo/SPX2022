@@ -7,7 +7,7 @@ void OCOUT_init(void)
 {
     // Configura el pin del OC como output
 	OCOUT_PORT.DIR |= OCOUT_PIN_bm;	
-	CLEAR_RELEOUT();
+	CLEAR_OCOUT();
 }
 
 // -----------------------------------------------------------------------------

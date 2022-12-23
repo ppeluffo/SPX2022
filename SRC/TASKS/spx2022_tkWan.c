@@ -42,8 +42,8 @@ static pwr_modo_t wan_check_pwr_modo_now(void);
 
 bool wan_process_from_dump(char *buff);
 
-#define PRENDER_MODEM() SET_RELEOUT()
-#define APAGAR_MODEM() CLEAR_RELEOUT()
+#define PRENDER_MODEM() RELE_CLOSE()
+#define APAGAR_MODEM() RELE_OPEN()
 
 #define DEBUG_WAN       true
 #define NO_DEBUG_WAN    false
@@ -59,6 +59,8 @@ bool f_configurated;
 bool f_link_up;
 
 bool f_save_config;
+
+bool f_inicio;
 
 static void wan_process_buffer( uint8_t c);
 static void wan_xmit_out(bool debug_flag );
@@ -82,6 +84,7 @@ void tkWAN(void * pvParameters)
     vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
     
     wan_state = WAN_APAGADO;
+    f_inicio = true;
     
 	// loop
 	for( ;; )
@@ -129,12 +132,18 @@ pwr_modo_t pwr_modo;
     vTaskDelay( ( TickType_t)( 5000 / portTICK_PERIOD_MS ) );
     PRENDER_MODEM();
     
+    // Cuando prendo, me conecto siempre para configurarme y vaciar la memoria.
+    if ( f_inicio ) {
+        f_inicio = false;
+        goto exit;
+    }
+    
     pwr_modo = wan_check_pwr_modo_now();
     
     // En modo continuo salgo enseguida. No importa timerdial
     if ( pwr_modo == PWR_CONTINUO) {
         vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-        xprintf_P(PSTR("WAN:: DEBUG: pwrmodo continuo\r\n"));
+        //xprintf_P(PSTR("WAN:: DEBUG: pwrmodo continuo\r\n"));
         goto exit;
     
     } else {
@@ -148,7 +157,7 @@ pwr_modo_t pwr_modo;
             // Mixto: Me conecto cada 1/2 hora
             sleep_ticks = 1800;
         }
-        xprintf_P(PSTR("WAN:: DEBUG: pwrmodo discreto. Sleep %d secs.\r\n"), sleep_ticks );
+        //xprintf_P(PSTR("WAN:: DEBUG: pwrmodo discreto. Sleep %d secs.\r\n"), sleep_ticks );
         sleep_ticks /= 60;  // paso a minutos
         // Duermo
         while ( sleep_ticks-- > 0) {
@@ -255,12 +264,13 @@ bool res;
    
 // ENTRY:
     
-    // Si hay datos en memoria los transmito todos y los borro.
+    // Si hay datos en memoria los transmito todos y los borro en bloques de a 8
     xprintf_P(PSTR("WAN:: ONLINE: dump memory...\r\n"));
-    dumped_rcds = FS_dump(wan_process_from_dump);
-    xprintf_P(PSTR("WAN:: ONLINE dumped %d rcds.\r\n"), dumped_rcds );
-    FS_delete(dumped_rcds);
     
+    while( (dumped_rcds = FS_dump(wan_process_from_dump, 8 )) > 0 ) {
+        xprintf_P(PSTR("WAN:: ONLINE dumped %d rcds.\r\n"), dumped_rcds );
+        FS_delete(dumped_rcds);
+    }
     // 
     pwr_modo = wan_check_pwr_modo_now();
     if ( pwr_modo == PWR_DISCRETO) {
@@ -324,7 +334,7 @@ uint16_t pwr_off;
         if ( pwr_on < pwr_off ) {
             if ( (now > pwr_on) && ( now < pwr_off)) {
                 // Estoy en modo MIXTO dentro del horario continuo
-                xprintf_P(PSTR("WAN:: DEBUG: CPWM pwrmodo mixto continuo(A).\r\n"));
+                //xprintf_P(PSTR("WAN:: DEBUG: CPWM pwrmodo mixto continuo(A).\r\n"));
                 return( PWR_CONTINUO);
             }
         }
@@ -333,14 +343,14 @@ uint16_t pwr_off;
         if ( pwr_on >= pwr_off ) {
             if ( ( now < pwr_off) || (now > pwr_on)) {
                 // Estoy en modo MIXTO dentro del horario continuo
-                xprintf_P(PSTR("WAN:: CPWM DEBUG: pwrmodo mixto continuo(B).\r\n"));
+                //xprintf_P(PSTR("WAN:: CPWM DEBUG: pwrmodo mixto continuo(B).\r\n"));
                 return( PWR_CONTINUO);
             }                
         }
     }
     
     // Estoy en modo discreto o mixto en horario discreto
-    xprintf_P(PSTR("WAN:: DEBUG: CPWM pwrmodo discreto.\r\n"));
+    //xprintf_P(PSTR("WAN:: DEBUG: CPWM pwrmodo discreto.\r\n"));
     return( PWR_DISCRETO);
 }
 //------------------------------------------------------------------------------
