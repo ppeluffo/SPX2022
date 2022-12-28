@@ -15,6 +15,8 @@ static bool f_debug_comms;
 
 typedef enum { WAN_APAGADO=0, WAN_OFFLINE, WAN_ONLINE_CONFIG, WAN_ONLINE_DATA } wan_states_t;
 
+typedef enum { DATA=0, BLOCK, BLOCKEND } tx_type_t;
+
 static uint8_t wan_state;
 
 struct {
@@ -65,6 +67,7 @@ bool f_inicio;
 static void wan_process_buffer( uint8_t c);
 static void wan_xmit_out(bool debug_flag );
 static void wan_print_RXbuffer(void);
+
 
 //------------------------------------------------------------------------------
 void tkWAN(void * pvParameters)
@@ -130,7 +133,6 @@ pwr_modo_t pwr_modo;
     
     APAGAR_MODEM();
     vTaskDelay( ( TickType_t)( 5000 / portTICK_PERIOD_MS ) );
-    PRENDER_MODEM();
     
     // Cuando prendo, me conecto siempre para configurarme y vaciar la memoria.
     if ( f_inicio ) {
@@ -169,6 +171,7 @@ pwr_modo_t pwr_modo;
     
 exit:
     
+    PRENDER_MODEM();
     f_configurated = false;    // Fuerzo que se deba configurar
     wan_state = WAN_OFFLINE;
     return;

@@ -85,8 +85,8 @@ extern "C" {
 #include "ainputs.h"
 
 
-#define FW_REV "1.0.0"
-#define FW_DATE "@ 20221222"
+#define FW_REV "1.0.1"
+#define FW_DATE "@ 20221228"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR2"
