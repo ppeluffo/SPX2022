@@ -37,12 +37,12 @@ static bool wan_process_frame_configAinputs(void);
 static bool wan_process_rsp_configAinputs(void);
 static bool wan_process_frame_configCounters(void);
 static bool wan_process_rsp_configCounters(void);
-static bool wan_process_buffer_dr(dataRcd_s *dr);
-static void wan_load_dr_in_txbuffer(dataRcd_s *dr, uint8_t *buff, uint16_t buffer_size );
+static bool wan_process_buffer_dr(dataRcd_s *dr, tx_type_t tx_type);
+static void wan_load_dr_in_txbuffer(dataRcd_s *dr, uint8_t *buff, uint16_t buffer_size, tx_type_t tx_type );
 static bool wan_process_rsp_data(void);
 static pwr_modo_t wan_check_pwr_modo_now(void);
 
-bool wan_process_from_dump(char *buff);
+bool wan_process_from_dump(char *buff, bool ultimo );
 
 #define PRENDER_MODEM() RELE_CLOSE()
 #define APAGAR_MODEM() RELE_OPEN()
@@ -134,7 +134,7 @@ pwr_modo_t pwr_modo;
     APAGAR_MODEM();
     vTaskDelay( ( TickType_t)( 5000 / portTICK_PERIOD_MS ) );
     
-    // Cuando prendo, me conecto siempre para configurarme y vaciar la memoria.
+    // Cuando inicio me conecto siempre sin esperar para configurarme y vaciar la memoria.
     if ( f_inicio ) {
         f_inicio = false;
         goto exit;
@@ -286,7 +286,7 @@ bool res;
            
         // Hay datos para transmitir
         if ( drWanBuffer.dr_ready ) {
-            res =  wan_process_buffer_dr( &drWanBuffer.dr);
+            res =  wan_process_buffer_dr( &drWanBuffer.dr, DATA);
             if (res) {
                 drWanBuffer.dr_ready = false;
             } else {
@@ -928,7 +928,7 @@ exit_:
 
 }
 //------------------------------------------------------------------------------
-static bool wan_process_buffer_dr(dataRcd_s *dr)
+static bool wan_process_buffer_dr(dataRcd_s *dr, tx_type_t tx_type)
 {
     
    /*
@@ -947,7 +947,7 @@ bool retS = false;
         vTaskDelay( ( TickType_t)( 1 ) );
     
     // Formateo(escribo) el dr en el wan_tx_buffer
-    wan_load_dr_in_txbuffer(dr, (uint8_t *)&wan_tx_buffer,WAN_TX_BUFFER_SIZE);
+    wan_load_dr_in_txbuffer(dr, (uint8_t *)&wan_tx_buffer,WAN_TX_BUFFER_SIZE, tx_type);
     
     // Proceso. Envio hasta 2 veces el frame y espero hasta 10s la respuesta
     f_rsp_data = false;
@@ -957,6 +957,15 @@ bool retS = false;
         kick_wdt(XWAN_WDG_bp);     
         wan_xmit_out(DEBUG_WAN);
     
+        // En los casos de BLOCK, no espero respuesta.
+        /*
+        if ( tx_type == BLOCK ) {
+            vTaskDelay( ( TickType_t)( 250 / portTICK_PERIOD_MS ) );
+            retS = true;
+            goto exit_;
+        }
+        */
+        
         // Espero respuesta chequeando cada 1s durante 10s.
         timeout = 10;
         while ( timeout-- > 0) {
@@ -968,6 +977,9 @@ bool retS = false;
                 goto exit_;
             }
         }
+        
+        xprintf_P(PSTR("WAN:: DATA RETRY\r\n"));
+        
     }
  
     // Expiro el tiempo sin respuesta del server.
@@ -975,20 +987,13 @@ bool retS = false;
     retS = false;
     
 exit_:
-               
-    xSemaphoreGive( sem_WAN );
-    return(retS);   
-    
-    
-    // Transmito
-    wan_xmit_out(DEBUG_WAN);
 
     xSemaphoreGive( sem_WAN );
-    return(true);
+    return(retS);
     
 }
 //------------------------------------------------------------------------------
-static void wan_load_dr_in_txbuffer(dataRcd_s *dr, uint8_t *buff, uint16_t buffer_size )
+static void wan_load_dr_in_txbuffer(dataRcd_s *dr, uint8_t *buff, uint16_t buffer_size, tx_type_t tx_type )
 {
     /*
      * Toma un puntero a un dr y el wan_tx_buffer y escribe el dr en este
@@ -1002,7 +1007,24 @@ int16_t fptr;
    // Armo el buffer
     memset(buff, '\0', buffer_size);
     fptr = 0;
-    fptr = sprintf_P( (char *)&buff[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:DATA;"), systemConf.dlgid, FW_TYPE, FW_REV);
+    fptr = sprintf_P( (char *)&buff[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:DATA;"), systemConf.dlgid, FW_TYPE, FW_REV);   
+    
+    /*
+    switch(tx_type) {
+        case DATA:
+            fptr = sprintf_P( (char *)&buff[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:DATA;"), systemConf.dlgid, FW_TYPE, FW_REV);        
+            break;
+        case BLOCK:
+            fptr = sprintf_P( (char *)&buff[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:BLOCK;"), systemConf.dlgid, FW_TYPE, FW_REV);        
+            break;
+        case BLOCKEND:
+            fptr = sprintf_P( (char *)&buff[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:BLOCKEND;"), systemConf.dlgid, FW_TYPE, FW_REV);        
+            break;
+        default:
+            return;          
+    }
+    */
+    
     
     // Clock
     fptr += sprintf_P( (char *)&buff[fptr], PSTR("DATE:%02d%02d%02d;"), dr->rtc.year,dr->rtc.month, dr->rtc.day );
@@ -1082,7 +1104,7 @@ static void wan_xmit_out(bool debug_flag )
     lBchar_Flush(&wan_lbuffer);
         
     if ( systemConf.wan_port == WAN_RS485B ) {
-        xfprintf_P( fdRS485B, PSTR("%s"), wan_tx_buffer);
+        xfprintf_P( fdRS485B, PSTR("%s"), &wan_tx_buffer[0]);
     }
     
     if (f_debug_comms || debug_flag) {
@@ -1141,18 +1163,27 @@ char *p;
     xprintf_P(PSTR("Rcvd-> %s\r\n"), p );
 }
 //------------------------------------------------------------------------------
-bool wan_process_from_dump(char *buff)
+bool wan_process_from_dump(char *buff, bool ultimo )
 {
     /*
      * Funcion pasada a FS_dump() para que formatee el buffer y transmita
      * como un dr.
+     * El parametro ultimo es para indicar que el frame es el ultimo del bloque
+     * por lo tanto debemos poner el tag BLOCKEND para que el server mande el 
+     * ACK
+     * 
      */
+    
 dataRcd_s dr;
 bool retS = false;
 
     kick_wdt(XWAN_WDG_bp);
     memcpy ( &dr, buff, sizeof(dataRcd_s) );
-    retS = wan_process_buffer_dr(&dr);
+    if ( ultimo ) {
+        retS = wan_process_buffer_dr(&dr, BLOCKEND );
+    } else {
+        retS = wan_process_buffer_dr(&dr, BLOCK );
+    }
     return(retS);
 }
 //------------------------------------------------------------------------------

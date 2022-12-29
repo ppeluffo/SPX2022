@@ -32,8 +32,8 @@ extern "C" {
 #define FS_PAGE_SIZE    32      //256
     
 #define FF_ADDR_START	0		// Posicion inicial
-#define FF_MAX_RCDS		64	// Cantidad de registros ( max 4096 en M24CM02 ).
-//#define FF_MAX_RCDS		4096    // ( FF_SIZE_IN_KB * 1024 / FF_RECD_SIZE )
+//#define FF_MAX_RCDS		64	// Cantidad de registros ( max 4096 en M24CM02 ).
+#define FF_MAX_RCDS		4096    // ( FF_SIZE_IN_KB * 1024 / FF_RECD_SIZE )
 //#define FF_MAX_RCDS		512
     
 #define FF_WRTAG	0xC5	// 1100 0101
@@ -85,7 +85,7 @@ bool FS_readRcdByPos( uint16_t pos, void *dr, uint8_t xSize, bool detail );
 void FS_format(bool fullformat);
 uint8_t fs_chksum8(const char *buff, size_t len);
 void FAT_read( fat_s *dstfat);
-int16_t FS_dump( bool (*funct)(char *buff), int16_t blocksize);
+int16_t FS_dump( bool (*funct)(char *buff, bool ultimo), int16_t blocksize);
 void FS_delete( int16_t ndrcds);
 
 void FS_set_debug(void);

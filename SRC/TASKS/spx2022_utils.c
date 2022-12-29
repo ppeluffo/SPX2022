@@ -424,7 +424,7 @@ uint8_t channel;
     xprintf_P( PSTR("\r\n"));
 }
 //------------------------------------------------------------------------------
-bool xprint_from_dump(char *buff)
+bool xprint_from_dump(char *buff, bool f_dummy)
 {
     /*
      * Funcion pasada a FS_dump() para que formatee el buffer y lo imprima

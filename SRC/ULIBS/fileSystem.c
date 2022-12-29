@@ -283,7 +283,7 @@ uint8_t cks;
    
 }
 //------------------------------------------------------------------------------
-int16_t FS_dump( bool (*funct)(char *buff), int16_t blocksize)
+int16_t FS_dump( bool (*funct)(char *buff, bool ultimo ), int16_t blocksize)
 {
     /*
      * Leo todos los registros y los proceso de a uno con la funcion
@@ -321,9 +321,18 @@ int16_t retV = -1;
         if ( ptr >= FAT.length) {
             ptr = 0;
         }
-        // Ejecuto la funcion que procesa el buffer.
-        retS = funct(&fs_rd_buffer[0]);
- 
+        
+        if ( i == ( blocksize - 1)) { 
+            // Ultimo frame del bloque
+            retS = funct(&fs_rd_buffer[0], true );
+        } else if ( i == ( FAT.count - 1)) {
+            // Ultimo frame de la fat
+            retS = funct(&fs_rd_buffer[0], true );        
+        } else {    
+            // Ejecuto la funcion que procesa el buffer.
+            retS = funct(&fs_rd_buffer[0], false);
+        }
+        
         // Si algun registro me da error, salgo.
         if ( !retS) {
             retV = -1;

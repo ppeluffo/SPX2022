@@ -86,7 +86,7 @@ extern "C" {
 
 
 #define FW_REV "1.0.1"
-#define FW_DATE "@ 20221228"
+#define FW_DATE "@ 20221229"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR2"
@@ -177,7 +177,7 @@ bool config_pwrmodo ( char *s_pwrmodo );
 bool config_pwron ( char *s_pwron );
 bool config_pwroff ( char *s_pwroff );
 void print_pwr_configuration(void);
-bool xprint_from_dump(char *buff);
+bool xprint_from_dump(char *buff, bool f_dummy);
 
 
 #define WAN_RX_BUFFER_SIZE 300

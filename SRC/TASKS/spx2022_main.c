@@ -15,6 +15,11 @@
  * -Wl,-u,vfprintf -lprintf_flt -lm
  * https://github.com/microchip-pic-avr-examples/avr128da48-cnano-printf-float-mplab-mcc
  * 
+ * PENDIENTE:
+ * 1- Transmitir en modo bloque al hacer un dump.
+ * 2- Modbus
+ * 3- Consumo: entrar en modo tickless
+ * 
  *  
  */
 
