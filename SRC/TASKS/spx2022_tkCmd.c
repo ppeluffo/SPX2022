@@ -84,6 +84,11 @@ static void cmdTestFunction(void)
 
 dataRcd_s dr;
 
+    if (!strcmp_P( strupr(argv[1]), PSTR("RB"))  ) {
+        counters_test_rb(argv[2]);
+        return;
+    }
+    
     if (!strcmp_P( strupr(argv[1]), PSTR("FSDEBUGON"))  ) {
         FS_set_debug();
         return;
@@ -115,6 +120,7 @@ dataRcd_s dr;
     }
 
     if (!strcmp_P( strupr(argv[1]), PSTR("POLL"))  ) {
+        // Leo los datos sin promediar.
         poll_data(&dr);
         WAN_process_data_rcd(&dr);
         xprint_dr(&dr);
@@ -202,7 +208,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("-write:\r\n"));
         xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos string} {debug}\r\n"));
         xprintf_P( PSTR("  rtc YYMMDDhhmm\r\n"));
-        xprintf_P( PSTR("  rele {open/close}, vsensors420 {on/off}\r\n"));
+        xprintf_P( PSTR("  oc,k1,k2 {open/close}, vsensors420 {on/off}\r\n"));
         xprintf_P( PSTR("  ina {confValue}\r\n"));
         xprintf_P( PSTR("  rs485a {string}, rs485b {string}\r\n"));
         
@@ -221,7 +227,8 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  dlgid\r\n"));
         xprintf_P( PSTR("  default\r\n"));
         xprintf_P( PSTR("  save\r\n"));
-        xprintf_P( PSTR("  comms {rs485, nbiot}, timerpoll, timerdial\r\n"));
+        xprintf_P( PSTR("  comms {rs485, nbiot}\r\n"));
+        xprintf_P( PSTR("  timerpoll, timerdial, samples {1..10}, almlevel {0..100}\r\n"));
         xprintf_P( PSTR("  pwrmodo {continuo,discreto,mixto}, pwron {hhmm}, pwroff {hhmm}\r\n"));
         xprintf_P( PSTR("  ainput {0..%d} aname imin imax mmin mmax offset\r\n"),( NRO_ANALOG_CHANNELS - 1 ) );
         xprintf_P( PSTR("  counter {0..%d} cname magPP modo(PULSO/CAUDAL)\r\n"), ( NRO_COUNTER_CHANNELS - 1 ) );
@@ -255,6 +262,11 @@ static void cmdReadFunction(void)
     
     FRTOS_CMD_makeArgv();
 
+    if (!strcmp_P( strupr(argv[1]), PSTR("SCONF"))  ) {
+		xprintf_P(PSTR("systemConf length=%d\r\n"), sizeof(systemConf));
+		return;
+	}
+    
     // MEMORY
 	// read memory
 	if (!strcmp_P( strupr(argv[1]), PSTR("MEMORY\0"))  ) {
@@ -366,16 +378,11 @@ static void cmdResetFunction(void)
         
         /*
          * No puedo estar usando la memoria !!!
-         */
-        if ( xHandle_tkSys != NULL ) {
-            vTaskSuspend( xHandle_tkSys );
-            xHandle_tkSys = NULL;
-        }
-        
-        if ( xHandle_tkWAN != NULL ) {
-            vTaskSuspend( xHandle_tkWAN );
-            xHandle_tkWAN = NULL;
-        }
+         */       
+        vTaskSuspend( xHandle_tkSys );
+        vTaskSuspend( xHandle_tkRS485A );
+        vTaskSuspend( xHandle_tkRS485B );
+        vTaskSuspend( xHandle_tkWAN );
         
         if ( !strcmp_P( strupr(argv[2]), PSTR("SOFT"))) {
 			FS_format(false );
@@ -407,8 +414,10 @@ fat_s l_fat;
     xprintf_P(PSTR("Config:\r\n"));
     xprintf_P(PSTR(" date: %s\r\n"), RTC_logprint(FORMAT_LONG));
     xprintf_P(PSTR(" dlgid: %s\r\n"), systemConf.dlgid );
-    xprintf_P(PSTR(" timerpoll=%d\r\n"), systemConf.timerpoll);
     xprintf_P(PSTR(" timerdial=%d\r\n"), systemConf.timerdial);
+    xprintf_P(PSTR(" timerpoll=%d\r\n"), systemConf.timerpoll);
+    xprintf_P(PSTR(" samples=%d\r\n"), systemConf.samples_count);
+    xprintf_P(PSTR(" alarm level=%d%%\r\n"), systemConf.alarm_level);
     
     print_pwr_configuration();
     
@@ -436,6 +445,15 @@ static void cmdWriteFunction(void)
         return;
     }
 
+    if ((strcmp_P( strupr(argv[1]), PSTR("SUSPEND")) == 0) ) {
+        vTaskSuspend( xHandle_tkSys );
+        vTaskSuspend( xHandle_tkRS485A );
+        vTaskSuspend( xHandle_tkRS485B );
+        vTaskSuspend( xHandle_tkWAN );
+        pv_snprintfP_OK();
+        return;
+    }
+    
     // RS485B
     // write rs485b {string}
     if ((strcmp_P( strupr(argv[1]), PSTR("RS485B")) == 0) ) {
@@ -470,22 +488,53 @@ static void cmdWriteFunction(void)
         return;
 	}
     
-	// write rele open/close
-	if (!strcmp_P( strupr(argv[1]), PSTR("RELE")) ) {
+	// write oc,k1,k2 open/close
+	if (!strcmp_P( strupr(argv[1]), PSTR("OC")) ) {
         if (!strcmp_P( strupr(argv[2]), PSTR("OPEN")) ) {
-            RELE_OPEN();
+            OCOUT_OPEN();
             pv_snprintfP_OK();
             return;
         }
         if (!strcmp_P( strupr(argv[2]), PSTR("CLOSE")) ) {
-            RELE_CLOSE();
+            OCOUT_CLOSE();
             pv_snprintfP_OK();
             return;
         }
         pv_snprintfP_ERR();
         return;
-	}
-    
+	} else if (!strcmp_P( strupr(argv[1]), PSTR("K1")) ) {
+        if (!strcmp_P( strupr(argv[2]), PSTR("OPEN")) ) {
+            RELE_K1_OPEN();
+            pv_snprintfP_OK();
+            return;
+        }
+        if (!strcmp_P( strupr(argv[2]), PSTR("CLOSE")) ) {
+            RELE_K1_CLOSE();
+            pv_snprintfP_OK();
+            return;
+        }
+        pv_snprintfP_ERR();
+        return; 
+	} else if (!strcmp_P( strupr(argv[1]), PSTR("K2")) ) {
+        if (!strcmp_P( strupr(argv[2]), PSTR("OPEN")) ) {
+            RELE_K2_OPEN();
+            pv_snprintfP_OK();
+            return;
+        }
+        if (!strcmp_P( strupr(argv[2]), PSTR("CLOSE")) ) {
+            RELE_K2_CLOSE();
+            pv_snprintfP_OK();
+            return;
+        }
+        pv_snprintfP_ERR();
+        return; 
+    } else {
+        pv_snprintfP_ERR();
+        return; 
+    }
+        
+        
+        
    	// EE
 	// write ee pos string
 	if ((strcmp_P( strupr(argv[1]), PSTR("EE")) == 0) ) {
@@ -527,35 +576,47 @@ static void cmdConfigFunction(void)
 bool retS = false;
     
     FRTOS_CMD_makeArgv();
-     
+
+    // samples {1..20}
+    if (!strcmp_P( strupr(argv[1]), PSTR("SAMPLES"))) {
+        config_samples(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+
+    // almlevel {0..100}
+    if (!strcmp_P( strupr(argv[1]), PSTR("ALMLEVEL"))) {
+        config_almlevel(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+    
     // POWER
     // pwr_modo {continuo,discreto,mixto}
-    if (!strcmp_P( strupr(argv[1]), PSTR("PWRMODO\0"))) {
+    if (!strcmp_P( strupr(argv[1]), PSTR("PWRMODO"))) {
         config_pwrmodo(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;
 	}
     
     // pwr_on {hhmm}
-     if (!strcmp_P( strupr(argv[1]), PSTR("PWRON\0"))) {
+     if (!strcmp_P( strupr(argv[1]), PSTR("PWRON"))) {
         config_pwron(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;
 	}  
     
     // pwr_off {hhmm}
-     if (!strcmp_P( strupr(argv[1]), PSTR("PWROFF\0"))) {
+     if (!strcmp_P( strupr(argv[1]), PSTR("PWROFF"))) {
         config_pwroff(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;
 	}   
     
     // COMMS
     // comms {rs485, nbiot}
-    if (!strcmp_P( strupr(argv[1]), PSTR("COMMS\0"))) {
+    if (!strcmp_P( strupr(argv[1]), PSTR("COMMS"))) {
         config_wan_port(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;
 	}
         
     // DLGID
-	if (!strcmp_P( strupr(argv[1]), PSTR("DLGID\0"))) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("DLGID"))) {
 		if ( argv[2] == NULL ) {
 			retS = false;
 			} else {
@@ -570,7 +631,7 @@ bool retS = false;
     
     // DEFAULT
 	// config default
-	if (!strcmp_P( strupr(argv[1]), PSTR("DEFAULT\0"))) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("DEFAULT"))) {
 		config_default();
 		pv_snprintfP_OK();
 		return;
@@ -578,7 +639,7 @@ bool retS = false;
 
 	// SAVE
 	// config save
-	if (!strcmp_P( strupr(argv[1]), PSTR("SAVE\0"))) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("SAVE"))) {
 		save_config_in_NVM();
 		pv_snprintfP_OK();
 		return;
@@ -586,7 +647,7 @@ bool retS = false;
     
     // LOAD
 	// config load
-	if (!strcmp_P( strupr(argv[1]), PSTR("LOAD\0"))) {
+	if (!strcmp_P( strupr(argv[1]), PSTR("LOAD"))) {
 		load_config_from_NVM();
 		pv_snprintfP_OK();
 		return;

@@ -24,6 +24,7 @@ struct {
     bool dr_ready;
 } drWanBuffer;
 
+
 static void wan_state_apagado(void);
 static void wan_state_offline(void);
 static void wan_state_online_config(void);
@@ -44,8 +45,8 @@ static pwr_modo_t wan_check_pwr_modo_now(void);
 
 bool wan_process_from_dump(char *buff, bool ultimo );
 
-#define PRENDER_MODEM() RELE_CLOSE()
-#define APAGAR_MODEM() RELE_OPEN()
+#define PRENDER_MODEM() RELE_K1_CLOSE()
+#define APAGAR_MODEM() RELE_K1_OPEN()
 
 #define DEBUG_WAN       true
 #define NO_DEBUG_WAN    false
@@ -125,6 +126,9 @@ static void wan_state_apagado(void)
     
 uint16_t sleep_ticks;
 pwr_modo_t pwr_modo;
+uint32_t ulNotifiedValue;
+BaseType_t xResult;
+
 
     kick_wdt(XWAN_WDG_bp);
     xprintf_P(PSTR("WAN:: State APAGADO\r\n"));
@@ -165,7 +169,15 @@ pwr_modo_t pwr_modo;
         while ( sleep_ticks-- > 0) {
             kick_wdt(XWAN_WDG_bp);
             // Espero de a 1 min para poder entrar en tickless.
-            vTaskDelay( ( TickType_t)( 60000 / portTICK_PERIOD_MS ) );
+            //vTaskDelay( ( TickType_t)( 60000 / portTICK_PERIOD_MS ) );
+            // Duermo monitoreando las señales.
+			xResult = xTaskNotifyWait( 0x00, ULONG_MAX, &ulNotifiedValue, ( TickType_t)( 60000 / portTICK_PERIOD_MS ) );
+			if ( xResult == pdTRUE ) {
+				if ( ( ulNotifiedValue & DATA_FRAME_READY ) != 0 ) {
+                    xprintf_P(PSTR("DEBUG: WAN SIGNAL RCVD\r\n"));
+					goto exit;
+				}
+			}
         }
     }
     
@@ -554,6 +566,24 @@ char *p;
     while (*p != '\0') {
 		hash = u_hash(hash, *p++);
 	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
+    sprintf_P( (char *)&hash_buffer, PSTR("[SAMPLES:%02d]"), systemConf.samples_count );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
+    sprintf_P( (char *)&hash_buffer, PSTR("[ALARM:%04d]"), systemConf.alarm_level );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    
     
     // Armo el buffer
     while ( xSemaphoreTake( sem_WAN, MSTOTAKEWANSEMPH ) != pdTRUE )
@@ -595,8 +625,8 @@ exit_:
 static bool wan_process_rsp_configBase(void)
 {
     /*
-     * Envia el TPOLL
-     * RXFRAME: <html><body><h1>CLASS:CONF_BASE;TPOLL:60;TDIAL:0;PWRMODO:MIXTO;PWRON:2330;PWROFF:0630</h1></body></html>                        
+     * Recibe la configuracion BASE.
+     * RXFRAME: <html><body><h1>CLASS:CONF_BASE;TPOLL:60;TDIAL:0;PWRMODO:MIXTO;PWRON:2330;PWROFF:0630;SAMPLES:1;ALARM:5;</h1></body></html>                        
      *                          CLASS:CONF_BASE;CONFIG:OK
      * 
      */
@@ -618,49 +648,81 @@ bool retS = false;
                 
 	memset(localStr,'\0',sizeof(localStr));
 	ts = strstr( p, "TPOLL:");
-	strncpy(localStr, ts, sizeof(localStr));
-	stringp = localStr;
-	token = strsep(&stringp,delim);	 	// TPOLL
-	token = strsep(&stringp,delim);	 	// timerpoll
-    config_timerpoll(token);
-    xprintf_P( PSTR("WAN:: Reconfig TIMERPOLL to %d\r\n\0"), systemConf.timerpoll );
+    if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        token = strsep(&stringp,delim);	 	// TPOLL
+        token = strsep(&stringp,delim);	 	// timerpoll
+        config_timerpoll(token);
+        xprintf_P( PSTR("WAN:: Reconfig TIMERPOLL to %d\r\n\0"), systemConf.timerpoll );
+    }
     //
     memset(localStr,'\0',sizeof(localStr));
 	ts = strstr( p, "TDIAL:");
-	strncpy(localStr, ts, sizeof(localStr));
-	stringp = localStr;
-	token = strsep(&stringp,delim);	 	// TDIAL
-	token = strsep(&stringp,delim);	 	// timerdial
-    config_timerdial(token);
-    xprintf_P( PSTR("WAN:: Reconfig TIMERDIAL to %d\r\n\0"), systemConf.timerdial );
+    if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        token = strsep(&stringp,delim);	 	// TDIAL
+        token = strsep(&stringp,delim);	 	// timerdial
+        config_timerdial(token);
+        xprintf_P( PSTR("WAN:: Reconfig TIMERDIAL to %d\r\n\0"), systemConf.timerdial );
+    }
     //
     memset(localStr,'\0',sizeof(localStr));
 	ts = strstr( p, "PWRMODO:");
-	strncpy(localStr, ts, sizeof(localStr));
-	stringp = localStr;
-	token = strsep(&stringp,delim);	 	// PWRMODO
-	token = strsep(&stringp,delim);	 	// pwrmodo_string
-    config_pwrmodo(token);
-    xprintf_P( PSTR("WAN:: Reconfig PWRMODO to %s\r\n\0"), token );
+	if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        token = strsep(&stringp,delim);	 	// PWRMODO
+        token = strsep(&stringp,delim);	 	// pwrmodo_string
+        config_pwrmodo(token);
+        xprintf_P( PSTR("WAN:: Reconfig PWRMODO to %s\r\n\0"), token );
+    }
     //
     memset(localStr,'\0',sizeof(localStr));
 	ts = strstr( p, "PWRON:");
-	strncpy(localStr, ts, sizeof(localStr));
-	stringp = localStr;
-	token = strsep(&stringp,delim);	 	// PWRON
-	token = strsep(&stringp,delim);	 	// pwron
-    config_pwron(token);
-    xprintf_P( PSTR("WAN:: Reconfig PWRON to %d\r\n\0"), systemConf.pwr_hhmm_on );
+	if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        token = strsep(&stringp,delim);	 	// PWRON
+        token = strsep(&stringp,delim);	 	// pwron
+        config_pwron(token);
+        xprintf_P( PSTR("WAN:: Reconfig PWRON to %d\r\n\0"), systemConf.pwr_hhmm_on );
+    }
     //
     memset(localStr,'\0',sizeof(localStr));
 	ts = strstr( p, "PWROFF:");
-	strncpy(localStr, ts, sizeof(localStr));
-	stringp = localStr;
-	token = strsep(&stringp,delim);	 	// PWROFF
-	token = strsep(&stringp,delim);	 	// pwroff
-    config_pwroff(token);
-    xprintf_P( PSTR("WAN:: Reconfig PWROFF to %d\r\n\0"), systemConf.pwr_hhmm_off );
-    //    
+	if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        token = strsep(&stringp,delim);	 	// PWROFF
+        token = strsep(&stringp,delim);	 	// pwroff
+        config_pwroff(token);
+        xprintf_P( PSTR("WAN:: Reconfig PWROFF to %d\r\n\0"), systemConf.pwr_hhmm_off );
+    }
+    // 
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "SAMPLES:");
+	if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        token = strsep(&stringp,delim);	 	// SAMPLES
+        token = strsep(&stringp,delim);	 	// samples
+        config_samples(token);
+        xprintf_P( PSTR("WAN:: Reconfig SAMPLES to %d\r\n\0"), systemConf.samples_count );
+    }
+    // 
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "ALARM:");
+	if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        token = strsep(&stringp,delim);	 	// ALARM
+        token = strsep(&stringp,delim);	 	// alarm
+        config_almlevel(token);
+        xprintf_P( PSTR("WAN:: Reconfig ALARM to %d\r\n\0"), systemConf.alarm_level );
+    }
+    // 
 	// Copio el dlgid recibido al systemConf.
     f_save_config = true;
 	//save_config_in_NVM();
@@ -946,6 +1008,10 @@ bool retS = false;
     while ( xSemaphoreTake( sem_WAN, MSTOTAKEWANSEMPH ) != pdTRUE )
         vTaskDelay( ( TickType_t)( 1 ) );
     
+    // Guardo el DR trasmitido en memoria para compararlo y ver si se disparan alarmas.
+    // En dataRcd_previo tengo el ultimo dato transmitido !!!.
+    memcpy(&dataRcd_previo, dr, sizeof(dataRcd_previo));
+   
     // Formateo(escribo) el dr en el wan_tx_buffer
     wan_load_dr_in_txbuffer(dr, (uint8_t *)&wan_tx_buffer,WAN_TX_BUFFER_SIZE, tx_type);
     
@@ -1043,6 +1109,9 @@ int16_t fptr;
             fptr += sprintf_P( (char*)&buff[fptr], PSTR("%s:%0.3f;"), systemConf.counters_conf[channel].name, dr->l_counters[channel]);
         }
     }
+    
+    // Battery
+    fptr += sprintf_P( (char*)&buff[fptr], PSTR("bt:%0.3f;"), dr->battery);
     
     fptr += sprintf_P( (char*)&buff[fptr], PSTR("\r\n"));
     

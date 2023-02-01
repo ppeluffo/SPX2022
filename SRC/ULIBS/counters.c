@@ -12,12 +12,24 @@ typedef struct {
 	uint32_t ticks_count;            // total de ticks entre el pulso actual y el anterior
     uint8_t  debounceTicks_count;    // ticks desde el flanco del pulso a validarlos
     uint16_t  filterTicks_count;     // ticks desde que lo valido hasta que permito que venga otro.   
-	uint16_t pulse_count;       // contador de pulsos
-	pulse_t state;        // variable de estado que indica si estoy dentro o fuera de un pulso
+	uint16_t pulse_count;            // contador de pulsos
+	pulse_t state;                   // variable de estado que indica si estoy dentro o fuera de un pulso
 } counter_cbk_t;
 
 static counter_cbk_t CNTCB[NRO_COUNTER_CHANNELS];
 static bool f_debug_counters;
+
+// Los caudales los almaceno en un RB y lo que doy es el promedio !!
+typedef struct {
+    float caudal;
+} t_caudal_s;
+
+#define MAX_RB_CAUDAL_STORAGE_SIZE  10
+t_caudal_s caudal_storage_0[MAX_RB_CAUDAL_STORAGE_SIZE];
+t_caudal_s caudal_storage_1[MAX_RB_CAUDAL_STORAGE_SIZE];
+rBstruct_s caudal_RB_0,caudal_RB_1;
+
+void promediar_rb_caudal(void);
 
 // -----------------------------------------------------------------------------
 void counters_init( counter_conf_t *counters_conf )
@@ -41,6 +53,21 @@ uint8_t i;
 
     counters_clear();
     
+    rBstruct_CreateStatic ( 
+        &caudal_RB_0, 
+        &caudal_storage_0, 
+        MAX_RB_CAUDAL_STORAGE_SIZE, 
+        sizeof(t_caudal_s), 
+        true  
+    );
+
+    rBstruct_CreateStatic ( 
+        &caudal_RB_1, 
+        &caudal_storage_1, 
+        MAX_RB_CAUDAL_STORAGE_SIZE, 
+        sizeof(t_caudal_s), 
+        true  
+    );
 }
 // -----------------------------------------------------------------------------
 uint8_t CNT0_read(void)
@@ -170,6 +197,9 @@ uint8_t counter_read_pin(uint8_t cnt)
 void counter_FSM(uint8_t i, counter_conf_t *counters_conf )
 {
 
+uint16_t duracion_pulso_ticks;
+t_caudal_s rb_element;
+ 
     // Esta funcion la invoca el timerCallback. c/vez sumo 1 para tener los ticks
     // desde el pulso anterior.
 	CNTCB[i].ticks_count++;
@@ -193,23 +223,35 @@ void counter_FSM(uint8_t i, counter_conf_t *counters_conf )
             CNTCB[i].debounceTicks_count++;
             if ( CNTCB[i].debounceTicks_count == 2 ) {   
                 CNTCB[i].pulse_count++;     // Pulso valido
+                
                 // Calculo el caudal instantaneo
                 if ( counters_conf[i].modo_medida == CAUDAL ) {
                     // Tengo 1 pulso en N ticks.
                     // 1 pulso -------> ticks_counts * 10 mS
                     // magpp (mt3) ---> ticks_counts * 10 mS
-                    if ( CNTCB[i].ticks_count > 0 ) {
-                        CNTCB[i].caudal =  (( counters_conf[i].magpp * 3600000) /  ( CNTCB[i].ticks_count * 10)  ); // En mt3/h
-                    } else {
-                        CNTCB[i].ticks_count = 1;
+                    duracion_pulso_ticks = CNTCB[i].ticks_count;
+                    CNTCB[i].ticks_count = 0;
+                    
+                    if ( duracion_pulso_ticks > 0 ) {
+                        CNTCB[i].caudal =  (( counters_conf[i].magpp * 3600000) /  ( duracion_pulso_ticks * 10)  ); // En mt3/h  
+                    } else {   
                         CNTCB[i].caudal = 0;
+                    } 
+                    // Guardo el caudal en el RB
+                    rb_element.caudal = CNTCB[i].caudal;
+                    if (i==0) {
+                        rBstruct_Poke(&caudal_RB_0, &rb_element);
+                    } else {
+                        rBstruct_Poke(&caudal_RB_1, &rb_element);
                     }
+                    
                 }
                 
                 CNTCB[i].state = P_INSIDE;  // Paso a esperar que suba
+                
                 if ( f_debug_counters ) {
                     if ( counters_conf[i].modo_medida == CAUDAL ) {
-                        xprintf_P( PSTR("COUNTERS: Q%d=%0.3f, P=%d\r\n"), i, CNTCB[i].caudal, CNTCB[i].pulse_count );
+                        xprintf_P( PSTR("COUNTERS: Q%d=%0.3f, P=%d, ticks=%d\r\n"), i, CNTCB[i].caudal, CNTCB[i].pulse_count, duracion_pulso_ticks );
                     } else {
                         xprintf_P( PSTR("COUNTERS: P%d=%d\r\n"), i, CNTCB[i].pulse_count );
                     }
@@ -227,9 +269,9 @@ void counter_FSM(uint8_t i, counter_conf_t *counters_conf )
             break;
             
         case P_FILTER:
-            // Debo esperar al menos 20 ticks (200ms) antes de contar de nuevo
+            // Debo esperar al menos 10 ticks (100ms) antes de contar de nuevo
              CNTCB[i].filterTicks_count++;
-            if ( (  CNTCB[i].filterTicks_count > 20 ) && ( counter_read_pin(i) == 1 ) ) {   
+            if ( (  CNTCB[i].filterTicks_count > 10 ) && ( counter_read_pin(i) == 1 ) ) {   
                 CNTCB[i].state = P_OUTSIDE;
                 return;
             }
@@ -247,60 +289,6 @@ void counter_FSM(uint8_t i, counter_conf_t *counters_conf )
     }
 
 }
-/*
-    
-	// Si estoy dentro de un pulso externo
-	if ( CNTCB[i].pulse == true ) {
-
-		CNTCB[i].ctlTicks_count++;		// Controlo los ticks de debounce y de restore ints.
-
-		// Controlo el periodo de debounce. (2ticks = 20ms)
-		if ( CNTCB[i].ctlTicks_count == 2 ) {
-			// Leo la entrada para ver si luego de un tdebounce esta en el mismo nivel.(pulso valido)
-			input_val = counter_read_pin(i);
-			if ( input_val == 0) {
-				CNTCB[i].pulse_count++;
-			} else {
-				// Falso disparo: rearmo y salgo
-				CNTCB[i].pulse = false;
-                counters_restore_int(i);
-				return;
-			}
-
-			// Estoy dentro de un pulso bien formado
-			// 1 pulso -------> ticks_counts * 10 mS
-			// magpp (mt3) ---> ticks_counts * 10 mS
-			if ( counters_conf[i].modo_medida == CAUDAL ) {
-				// Calculo el caudal
-				// Tengo 1 pulso en N ticks.
-				if ( CNTCB[i].ticks_count > 0 ) {
-					CNTCB[i].caudal =  (( counters_conf[i].magpp * 3600000) /  ( CNTCB[i].ticks_count * 10)  ); // En mt3/h
-				} else {
-					CNTCB[i].ticks_count = 1;
-					CNTCB[i].caudal = 0;
-				}
-                
-                if ( f_debug_counters ) {
-                    xprintf_P( PSTR("COUNTERS: Q%d=%0.3f, pulses=%d\r\n"), i, CNTCB[i].caudal, CNTCB[i].pulse_count );
-                }
-			} else {
-                if ( f_debug_counters ) {
-                    xprintf_P( PSTR("COUNTERS: C%d=%d (PULSES)\r\n"), i, CNTCB[i].pulse_count );
-                }
-			}
-			// Reinicio los ticks
-			CNTCB[i].ticks_count = 0;
-
-		}
-
-		// Cuando se cumple el periodo minimo del pulso, rearmo para el proximo
-//		if ( CNTCB[i].ctlTicks_count == counters_conf[i].period/10 ) {
-			//xprintf_P( PSTR("COUNTERS: DEBUG C0=%d,CTL=%d, TICKS=%d\r\n"), CNTCB[i].pulse_count, CNTCB[i].ctlTicks_count, CNTCB[i].ticks_count );
-//			CNTCB[i].pulse = false;
- //           counters_restore_int(i);
-//		}
-	}
- */
 //------------------------------------------------------------------------------
 void counters_clear(void)
 {
@@ -315,8 +303,11 @@ uint8_t cnt;
 //------------------------------------------------------------------------------
 void counters_read( float *l_counters, counter_conf_t *counters_conf )
 {
-uint8_t i;
 
+uint8_t i;
+    
+    promediar_rb_caudal();
+    
     for (i=0; i < NRO_COUNTER_CHANNELS; i++) {
         
         //xprintf_P( PSTR("DEBUG1: C%d=%d\r\n"), i, CNTCB[i].pulse_count );
@@ -330,3 +321,56 @@ uint8_t i;
     }
 }
 //------------------------------------------------------------------------------
+void promediar_rb_caudal(void)
+{
+uint8_t i;
+t_caudal_s rb_element;
+float q0,q1, Qavg0,Qavg1;
+
+    // Promedio los ringBuffers
+    Qavg0=0.0;
+    Qavg1=0.0;
+
+    for (i=0; i<MAX_RB_CAUDAL_STORAGE_SIZE; i++) {
+        rb_element = caudal_storage_0[i];
+        q0 = rb_element.caudal;
+        Qavg0 += q0;
+        rb_element = caudal_storage_1[i];
+        q1 = rb_element.caudal;
+        Qavg1 += q1;
+        //xprintf_P(PSTR("DEBUG: i=%d [q0=%0.3f, avgQ0=%0.3f] [q1=%0.3f, avgQ1=%0.3f]\r\n"), i, q0, Qavg0,q1,Qavg1);
+    }
+    
+    Qavg0 /= MAX_RB_CAUDAL_STORAGE_SIZE;
+    Qavg1 /= MAX_RB_CAUDAL_STORAGE_SIZE;
+    CNTCB[0].caudal = Qavg0;
+    CNTCB[1].caudal = Qavg1;
+
+}
+//------------------------------------------------------------------------------
+void counters_test_rb(char *data)
+{
+    
+    //ardo el data en el RB, lo promedio, imprimo el RB y el promedio
+    
+/*
+t_caudal_s rb_element;
+uint8_t i;
+float avg;
+
+    rb_element.caudal = atof(data);
+    rBstruct_Poke(&caudal_RB, &rb_element);
+
+    avg = 0.0;
+    for (i=0; i<MAX_RB_CAUDAL_STORAGE_SIZE; i++) {
+        rb_element = caudal_storage[i];
+        avg += rb_element.caudal;
+        xprintf_P(PSTR("DEBUG: i=%d, element=%d, avg=%0.3f\r\n"), i, rb_element.caudal, avg);
+    }
+    avg /= MAX_RB_CAUDAL_STORAGE_SIZE;
+    xprintf_P(PSTR("DEBUG: AVG=%0.3f\r\n"), avg);
+*/
+    
+}
+
+        

@@ -15,10 +15,27 @@
  * -Wl,-u,vfprintf -lprintf_flt -lm
  * https://github.com/microchip-pic-avr-examples/avr128da48-cnano-printf-float-mplab-mcc
  * 
+ * Log en el servidor:
+ * hset 'SPCOMMS' 'DEBUG_DLGID' 'PPOTKIYU'
+ * 
+ * 
  * PENDIENTE:
  * 1- Transmitir en modo bloque al hacer un dump.
  * 2- Modbus
  * 3- Consumo: entrar en modo tickless
+ * 
+ * -----------------------------------------------------------------------------
+ * V1.0.4 @ 20230118
+ * Incorporo los conceptos de 'samples_count' y 'alarm_level'
+ *  
+ * 
+ * V1.0.3 @ 20230109
+ * Agrego logica de manejo de reles K1,K2. El modem esta en K1.
+ * Revisar el reset memory hard que bloquea al dlg.
+ * 
+ * 
+ * V1.0.2 @ 2023-01-02
+ * Agrego en la funcion ainputs_test_read_channel() que prenda y apague los sensores.
  * 
  *  
  */

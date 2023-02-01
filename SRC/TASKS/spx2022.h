@@ -69,6 +69,7 @@ extern "C" {
 #include "stdint.h"
 #include "stdbool.h"
 #include "string.h"
+#include "math.h"
 
 #include "frtos-io.h"
 #include "xprintf.h"
@@ -85,8 +86,8 @@ extern "C" {
 #include "ainputs.h"
 
 
-#define FW_REV "1.0.1"
-#define FW_DATE "@ 20221229"
+#define FW_REV "1.0.5"
+#define FW_DATE "@ 20230201"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR2"
@@ -154,9 +155,12 @@ void reset(void);
 
 typedef struct {
     float l_ainputs[NRO_ANALOG_CHANNELS];
+    float battery;
     float l_counters[NRO_COUNTER_CHANNELS];
     RtcTimeType_t  rtc;	
 } dataRcd_s;
+
+dataRcd_s dataRcd_previo;
 
 void kick_wdt( uint8_t bit_pos);
 
@@ -178,6 +182,9 @@ bool config_pwron ( char *s_pwron );
 bool config_pwroff ( char *s_pwroff );
 void print_pwr_configuration(void);
 bool xprint_from_dump(char *buff, bool f_dummy);
+bool config_samples ( char *s_samples );
+bool config_almlevel ( char *s_almlevel );
+void debug_print_rb(void);
 
 
 #define WAN_RX_BUFFER_SIZE 300
@@ -198,6 +205,7 @@ struct {
     bool debug;
     bool rele_output;
     float ainputs[NRO_ANALOG_CHANNELS];
+    float battery;
     float counters[NRO_COUNTER_CHANNELS];
 } systemVars;
 
@@ -215,8 +223,16 @@ struct {
     uint16_t pwr_hhmm_off;
 	ainputs_conf_t ainputs_conf[NRO_ANALOG_CHANNELS];
     counter_conf_t counters_conf[NRO_COUNTER_CHANNELS];
+    uint8_t samples_count;      // Nro. de muestras para promediar una medida
+    uint8_t alarm_level;        // Nivel de variacion de medidas para transmitir.
+    
+    // El checksum SIEMPRE debe ser el ultimo byte !!!!!
     uint8_t checksum;
+    
 } systemConf;
+
+// Mensajes entre tareas
+#define DATA_FRAME_READY			0x01	//
 
 
 uint8_t sys_watchdog;

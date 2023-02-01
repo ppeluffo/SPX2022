@@ -27,12 +27,39 @@ extern "C" {
 #define CLEAR_OCOUT()     ( OCOUT_PORT.OUT &= ~OCOUT_PIN_bm )
 #define TOGGLE_OCOUT()    ( OCOUT_PORT.OUT ^= 1UL << OCOUT_PIN_bp);
 
-#define RELE_OPEN()         CLEAR_OCOUT() 
-#define RELE_CLOSE()        SET_OCOUT()
-#define TOGGLE_RELEOUT()    TOGGLE_OCOUT()
-    
+#define OCOUT_OPEN()         CLEAR_OCOUT() 
+#define OCOUT_CLOSE()        SET_OCOUT()
+
 void OCOUT_init(void);
+
+#define RELE_K1_PORT         PORTA
+#define RELE_K1              5 
+#define RELE_K1_PIN_bm       PIN5_bm
+#define RELE_K1_PIN_bp       PIN5_bp
+
+#define SET_RELE_K1()       ( RELE_K1_PORT.OUT |= RELE_K1_PIN_bm )
+#define CLEAR_RELE_K1()     ( RELE_K1_PORT.OUT &= ~RELE_K1_PIN_bm )
+#define TOGGLE_RELE_K1()    ( RELE_K1_PORT.OUT ^= 1UL << RELE_K1_PIN_bp);
     
+#define RELE_K1_OPEN()      CLEAR_RELE_K1() 
+#define RELE_K1_CLOSE()     SET_RELE_K1()
+
+void RELE_K1_init(void);
+    
+#define RELE_K2_PORT         PORTA
+#define RELE_K2              6 
+#define RELE_K2_PIN_bm       PIN6_bm
+#define RELE_K2_PIN_bp       PIN6_bp
+
+#define SET_RELE_K2()       ( RELE_K2_PORT.OUT |= RELE_K2_PIN_bm )
+#define CLEAR_RELE_K2()     ( RELE_K2_PORT.OUT &= ~RELE_K2_PIN_bm )
+#define TOGGLE_RELE_K2()    ( RELE_K2_PORT.OUT ^= 1UL << RELE_K2_PIN_bp);
+    
+#define RELE_K2_OPEN()      CLEAR_RELE_K2() 
+#define RELE_K2_CLOSE()     SET_RELE_K2()
+
+void RELE_K2_init(void);
+
 // Salida de prender/apagar sensores 4-20
 #define VSENSORS420_PORT         PORTD
 #define VSENSORS420              1

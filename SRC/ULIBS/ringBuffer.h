@@ -1,3 +1,17 @@
+/* 
+ * File:   ringBuffer.h
+ * Author: pablo
+ *
+ * Created on 17 de enero de 2023, 08:19 PM
+ */
+
+#ifndef RINGBUFFER_H
+#define	RINGBUFFER_H
+
+#ifdef	__cplusplus
+extern "C" {
+#endif
+
 /*
  * l_ringBuffer.h
  *
@@ -10,10 +24,6 @@
  * y el buffer no queda bien controlado.
  * 
  */
-
-#ifndef SRC_SPX_LIBS_L_RINGBUFFER_H_
-#define SRC_SPX_LIBS_L_RINGBUFFER_H_
-
 
 #include "stdlib.h"
 #include "string.h"
@@ -53,15 +63,23 @@ typedef struct {
 	uint16_t count;
 	uint16_t length;
 	uint16_t elementsize;
+    bool overwrite;
 } rBstruct_s;
 
-void rBstruct_CreateStatic ( rBstruct_s *rB, void *storage_area, uint16_t buffersize, uint16_t elementsize  );
+void rBstruct_CreateStatic ( rBstruct_s *rB, void *storage_area, uint16_t buffersize, uint16_t elementsize, bool f_overwrite  );
 bool rBstruct_Poke( rBstruct_s *rB, void *element );
 bool rBstruct_Pop( rBstruct_s *rB, void *element );
 bool rBstruct_PopRead( rBstruct_s *rB, void *element );
 void rBstruct_Flush( rBstruct_s *rB );
 uint16_t rBstruct_GetCount( rBstruct_s *rB );
 uint16_t rBstruct_GetFreeCount( rBstruct_s *rB );
+uint16_t rBstruct_GetHead( rBstruct_s *rB );
+uint16_t rBstruct_GetTail( rBstruct_s *rB );
 
 
-#endif /* SRC_SPX_LIBS_L_RINGBUFFER_H_ */
+#ifdef	__cplusplus
+}
+#endif
+
+#endif	/* RINGBUFFER_H */
+

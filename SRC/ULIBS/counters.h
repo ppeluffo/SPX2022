@@ -25,6 +25,7 @@ extern "C" {
 #include <stdio.h>
     
 #include "xprintf.h"
+#include "ringBuffer.h"
     
 #define CNT0_PORT	PORTE
 #define CNT0_PIN    6   
@@ -67,6 +68,7 @@ void counters_read( float *l_counters, counter_conf_t *counter_conf );
 uint8_t CNT0_read(void);
 uint8_t CNT1_read(void);
 
+void counters_test_rb(char *data);
 
 #ifdef	__cplusplus
 }

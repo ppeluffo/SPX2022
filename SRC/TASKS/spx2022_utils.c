@@ -41,6 +41,8 @@ void system_init()
     XPRINTF_init();
     //COUNTERS_init();
     OCOUT_init();
+    RELE_K1_init();
+    RELE_K2_init();
     VSENSORS420_init();
     CONFIG_RTS_485A();
     CONFIG_RTS_485B();
@@ -94,6 +96,9 @@ void config_default(void)
     
     systemConf.timerpoll = 60;
     systemConf.timerdial = 0;
+    
+    systemConf.alarm_level = 0;
+    systemConf.samples_count = 1;
     
     systemConf.pwr_modo = PWR_CONTINUO;
     systemConf.pwr_hhmm_on = 2330;
@@ -421,6 +426,10 @@ uint8_t channel;
             xprintf_P( PSTR("%s:%0.3f;"), systemConf.counters_conf[channel].name, dr->l_counters[channel]);
         }
     }
+    
+    // Battery
+    xprintf_P( PSTR("bt:%0.2f;"), dr->battery);
+    
     xprintf_P( PSTR("\r\n"));
 }
 //------------------------------------------------------------------------------
@@ -448,5 +457,46 @@ uint8_t j;
     memcpy ( &dr, buff, sizeof(dataRcd_s) );
     xprint_dr(&dr);
     return(true);
+}
+//------------------------------------------------------------------------------
+bool config_samples ( char *s_samples )
+{
+	// Configura el numero de muestras de c/poleo.
+	// Debe ser mayor a 1 y menor a 20.
+
+
+	systemConf.samples_count= atoi(s_samples);
+
+	if ( systemConf.samples_count < 1 ) {
+		systemConf.samples_count = 1;
+        xprintf_P(PSTR("ALERT: samples default to 1 !!!\r\n"));
+    }
+    
+
+	if ( systemConf.samples_count > 10 ) {
+		systemConf.samples_count = 10;
+        xprintf_P(PSTR("ALERT: samples default to 10 !!!\r\n"));
+    }
+
+	return(true);
+}
+//------------------------------------------------------------------------------
+bool config_almlevel ( char *s_almlevel )
+{
+	// Configura el nivel de disparo de alarmas.
+	// Se utiliza desde el modo discreto e indica el porcentaje del valor
+    // de la medida.
+    // Varia entre 0 y 100
+
+
+	systemConf.alarm_level = atoi(s_almlevel);
+
+	if ( systemConf.alarm_level < 0 )
+		systemConf.alarm_level = 0;
+
+	if ( systemConf.alarm_level > 100 )
+		systemConf.alarm_level = 100;
+
+	return(true);
 }
 //------------------------------------------------------------------------------

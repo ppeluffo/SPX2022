@@ -6,15 +6,18 @@
  * 
  */
 
+
 #include "spx2022.h"
 
-dataRcd_s dataRcd;
+dataRcd_s dataRcd, dataRcd_previo;
 
 StaticTimer_t counters_xTimerBuffer;
 TimerHandle_t counters_xTimer;
 
 void counters_start_timer( void );
 void counters_TimerCallback( TimerHandle_t xTimer );
+
+void check_alarms(dataRcd_s *dataRcd);
 
 //------------------------------------------------------------------------------
 void tkSystem(void * pvParameters)
@@ -30,6 +33,8 @@ uint32_t waiting_ticks;
     
     counters_init( systemConf.counters_conf );
     counters_start_timer();
+    
+    ainputs_init(systemConf.samples_count);
     
     xLastWakeTime = xTaskGetTickCount();
     // Espero solo 10s para el primer poleo ( no lo almaceno !!)
@@ -50,7 +55,54 @@ uint32_t waiting_ticks;
         WAN_process_data_rcd(&dataRcd);
         // Imprimo localmente en pantalla
         xprint_dr(&dataRcd);
+
+        // Vemos si algun valor excede el nivel de alarma
+        check_alarms(&dataRcd);
 	}
+}
+//------------------------------------------------------------------------------
+void check_alarms(dataRcd_s *dataRcd)
+{
+    /*
+     * Compara el valor de los canales analogicos configurados con el 
+     * valor ultimo transmitido.
+     * Si el valor de alguno excede el nivel de alarma, indica al modem
+     * que despierte.
+     */
+    
+float valor_previo, valor_actual, delta;
+uint8_t i;
+bool send_signal = false;
+
+        
+    for (i=0; i < NRO_ANALOG_CHANNELS; i++) {
+        valor_previo = dataRcd_previo.l_ainputs[i];
+        valor_actual = dataRcd->l_ainputs[i];
+        delta = systemConf.ainputs_conf[i].mmax * systemConf.alarm_level / 100;
+        
+        //xprintf_P(PSTR("DEBUG ALARM: %d, vp=%0.3f, va=%0.3f, delta=%0.3f\r\n"), i, valor_previo, valor_actual, delta);
+        
+        // Si el nivel de alarma esta configurado
+        if ( delta > 0) {
+
+            // Si el canal esta configurado
+            if ( strcmp ( systemConf.ainputs_conf[i].name, "X" ) != 0 ) {
+                
+                // Si el error excede el nivel de alarma
+                if ( delta < fabs( valor_actual - valor_previo) ) {
+                    send_signal = true;
+                }
+            }
+        }
+    }
+
+    if ( send_signal ) {
+        xprintf_P(PSTR("ALARM: SEND WAKEUP SIGNAL\r\n"));
+        while ( xTaskNotify(xHandle_tkWAN, SGN_FRAME_READY , eSetBits ) != pdPASS ) {
+			vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
+		}
+    }
+    
 }
 //------------------------------------------------------------------------------
 dataRcd_s *get_system_dr(void)

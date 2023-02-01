@@ -9,11 +9,11 @@
 #include "ringBuffer.h"
 
 
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 /*
  *  RING BUFFERS DE ESTRUCTURAS
  */
-void rBstruct_CreateStatic ( rBstruct_s *rB, void *storage_area, uint16_t buffersize, uint16_t elementsize  )
+void rBstruct_CreateStatic ( rBstruct_s *rB, void *storage_area, uint16_t buffersize, uint16_t elementsize, bool f_overwrite  )
 {
 	rB->buff = storage_area;
 	rB->head = 0;	// start
@@ -21,13 +21,18 @@ void rBstruct_CreateStatic ( rBstruct_s *rB, void *storage_area, uint16_t buffer
 	rB->count = 0;
 	rB->length = buffersize;
 	rB->elementsize = elementsize;
+    rB->overwrite = f_overwrite;
 
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 bool rBstruct_Poke( rBstruct_s *rB, void *element )
 {
 
-	// Coloco una estructura presionTask ( put_on_top ) en la FIFO
+	/*
+     *  Coloco una estructura presionTask ( put_on_top ) en la FIFO
+     *  Dependiendo del overwrite esperamos tener espacio o no.
+     *
+     */
 
 bool ret = false;
 void *p;
@@ -39,23 +44,38 @@ void *p;
 		rB->head = rB->tail = 0;
 	}
 
-	if ( rB->count < rB->length ) {
-
-		p =  (rB->buff);
-		p += sizeof(uint8_t)*( rB->head * rB->elementsize);
-
-		memcpy( p, element, rB->elementsize );
-		++rB->count;
-		// Avanzo en modo circular
-		rB->head = ( rB->head  + 1 ) % ( rB->length );
-		ret = true;
+    // Si esta lleno y no tengo overwrite salgo
+    if ( rB->length == rB->count) {
+        if ( !rB->overwrite) {
+            goto exit;
+        }
     }
+    
+    // Guardo
+	p =  (rB->buff);
+	p += sizeof(uint8_t)*( rB->head * rB->elementsize);
+	memcpy( p, element, rB->elementsize );
+    
+    // Avanzo.
+	// 1 - Avanzo el head en modo circular.
+	rB->head = ( rB->head  + 1 ) % ( rB->length );
+    // 2 - Si no esta lleno avanzo el contador
+    if ( rB->length > rB->count)  {
+        ++rB->count;
+    } else {
+        // Avanzo el tail.
+        rB->tail = ( rB->tail  + 1 ) % ( rB->length );
+    }
+    
+	ret = true;
 
+exit:
+    
 	taskEXIT_CRITICAL();
 	return(ret);
 
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 bool rBstruct_Pop( rBstruct_s *rB, void *element )
 {
 
@@ -84,7 +104,7 @@ void *p;
 	taskEXIT_CRITICAL();
 	return(ret);
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 bool rBstruct_PopRead( rBstruct_s *rB, void *element )
 {
 
@@ -112,7 +132,7 @@ void *p;
 	taskEXIT_CRITICAL();
 	return(ret);
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 void rBstruct_Flush( rBstruct_s *rB )
 {
 
@@ -121,21 +141,35 @@ void rBstruct_Flush( rBstruct_s *rB )
 	rB->count = 0;
 	memset( (rB->buff), '\0', (rB->length * rB->elementsize) );
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 uint16_t rBstruct_GetCount( rBstruct_s *rB )
 {
 
 	return(rB->count);
 
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
 uint16_t rBstruct_GetFreeCount( rBstruct_s *rB )
 {
 
 	return(rB->length - rB->count);
 
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+uint16_t rBstruct_GetHead( rBstruct_s *rB )
+{
+
+	return(rB->head);
+
+}
+//------------------------------------------------------------------------------
+uint16_t rBstruct_GetTail( rBstruct_s *rB )
+{
+
+	return(rB->tail);
+
+}
+//------------------------------------------------------------------------------
 /*
  *  RING BUFFERS DE CHAR
  */
