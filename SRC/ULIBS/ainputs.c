@@ -148,6 +148,9 @@ uint8_t channel = 0;
 
 		snprintf_P( ainputs_conf[channel].name, AIN_PARAMNAME_LENGTH, PSTR("A%d\0"),channel );
 	}
+
+    snprintf_P( ainputs_conf[2].name, AIN_PARAMNAME_LENGTH, PSTR("X"));
+
 }
 //------------------------------------------------------------------------------
 void ainputs_print_configuration(ainputs_conf_t *ainputs_conf)
@@ -334,6 +337,9 @@ uint8_t i;
             rBstruct_Poke(&ain_RB_1, &rb_element);
             break;
         case 2:
+            rBstruct_Poke(&ain_RB_2, &rb_element);
+            break;
+        case 99:
             rBstruct_Poke(&ain_RB_2, &rb_element);
             break;
             

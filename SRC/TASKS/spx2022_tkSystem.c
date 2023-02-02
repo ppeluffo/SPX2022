@@ -129,11 +129,24 @@ bool retS = false;
     while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 5 ) != pdTRUE )
   		vTaskDelay( ( TickType_t)( 1 ) );
         
-    // ANALOG: Leo los 3 canales analogicos
-    for ( channel = 0; channel < NRO_ANALOG_CHANNELS; channel++) {
+    // ANALOG: Leo los 2 canales analogicos
+    /*
+    for ( channel = 0; channel < ( NRO_ANALOG_CHANNELS - 1 ) ; channel++) {
         ainputs_read_channel ( channel, systemConf.ainputs_conf, &mag, &raw );
         systemVars.ainputs[channel] = mag;
     }
+     */
+    
+    ainputs_read_channel ( 0, systemConf.ainputs_conf, &mag, &raw );
+    systemVars.ainputs[0] = mag;
+        
+    ainputs_read_channel ( 1, systemConf.ainputs_conf, &mag, &raw );
+    systemVars.ainputs[1] = mag;
+    
+    // Leo la bateria
+    ainputs_read_channel ( 99, systemConf.ainputs_conf, &mag, &raw );
+    systemVars.battery = mag;
+    
     // Apago los sensores
     ainputs_apagar_sensores();
         
@@ -144,6 +157,8 @@ bool retS = false;
     // Armo el dr.
     memcpy(dataRcd->l_ainputs, systemVars.ainputs, sizeof(dataRcd->l_ainputs));
     memcpy(dataRcd->l_counters, systemVars.counters, sizeof(dataRcd->l_counters));  
+    dataRcd->battery = systemVars.battery;  
+    
     // Agrego el timestamp.
     f_status = RTC_read_dtime( &dataRcd->rtc );
     if ( ! f_status ) {

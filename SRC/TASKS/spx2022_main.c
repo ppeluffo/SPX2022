@@ -25,6 +25,9 @@
  * 3- Consumo: entrar en modo tickless
  * 
  * -----------------------------------------------------------------------------
+ * V1.0.6 @ 20230202
+ * Solo manejo 2 canales y el 3o es la bateria.
+ * 
  * V1.0.5 @ 20230202
  * Configuro 'samples_count' y 'alarm_level' por la wan.
  *  
