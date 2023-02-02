@@ -87,7 +87,7 @@ extern "C" {
 
 
 #define FW_REV "1.0.5"
-#define FW_DATE "@ 20230201"
+#define FW_DATE "@ 20230202"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR2"

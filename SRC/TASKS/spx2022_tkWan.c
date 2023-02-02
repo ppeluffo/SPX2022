@@ -577,7 +577,7 @@ char *p;
     //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
     //
     memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
-    sprintf_P( (char *)&hash_buffer, PSTR("[ALARM:%04d]"), systemConf.alarm_level );
+    sprintf_P( (char *)&hash_buffer, PSTR("[ALARM:%02d]"), systemConf.alarm_level );
     p = (char *)hash_buffer;
     while (*p != '\0') {
 		hash = u_hash(hash, *p++);
@@ -626,7 +626,7 @@ static bool wan_process_rsp_configBase(void)
 {
     /*
      * Recibe la configuracion BASE.
-     * RXFRAME: <html><body><h1>CLASS:CONF_BASE;TPOLL:60;TDIAL:0;PWRMODO:MIXTO;PWRON:2330;PWROFF:0630;SAMPLES:1;ALARM:5;</h1></body></html>                        
+     * RXFRAME: <html><body><h1>CLASS:CONF_BASE;TPOLL:60;TDIAL:0;PWRMODO:MIXTO;PWRON:2330;PWROFF:0630;SAMPLES:1;ALMLEVEL:5;</h1></body></html>                        
      *                          CLASS:CONF_BASE;CONFIG:OK
      * 
      */
@@ -713,7 +713,7 @@ bool retS = false;
     }
     // 
     memset(localStr,'\0',sizeof(localStr));
-	ts = strstr( p, "ALARM:");
+	ts = strstr( p, "ALMLEVEL:");
 	if  ( ts != NULL ) {
         strncpy(localStr, ts, sizeof(localStr));
         stringp = localStr;

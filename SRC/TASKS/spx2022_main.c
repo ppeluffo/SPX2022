@@ -25,6 +25,9 @@
  * 3- Consumo: entrar en modo tickless
  * 
  * -----------------------------------------------------------------------------
+ * V1.0.5 @ 20230202
+ * Configuro 'samples_count' y 'alarm_level' por la wan.
+ *  
  * V1.0.4 @ 20230118
  * Incorporo los conceptos de 'samples_count' y 'alarm_level'
  *  
