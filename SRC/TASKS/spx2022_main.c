@@ -21,9 +21,23 @@
  * 
  * PENDIENTE:
  * 1- Transmitir en modo bloque al hacer un dump.
- * 2- Modbus
- * 3- Consumo: entrar en modo tickless
+ * 2- Consumo: entrar en modo tickless
+ *
+ * -----------------------------------------------------------------------------
+ * V1.0.7 @ 20230306
+ * Incorporamos el modulo de modbus.
+ * Manejamos 5 canales (float) por lo que aumentamos el FS_BLOCKSIZE a 64.
+ * Falta:
+ *  - A veces da el pc timeout ? Es como si el frame se fragmentara
+ *  - WAN
  * 
+ * - BUG: No podia escribir el RTC
+ * - BUG: Los canales analogicos, contadores, modbus por default deben ser 'X'
+ * - BUG: Los contadores al medir caudal nunca llegaban a 0. Agrego en counters_clear()
+ *        que converjan a 0.
+ * - BUG: No calculaba bien el hash de conf_base y por eso se reconfigura siempre
+ * 
+ *  
  * -----------------------------------------------------------------------------
  * V1.0.6 @ 20230202
  * Solo manejo 2 canales y el 3o es la bateria.

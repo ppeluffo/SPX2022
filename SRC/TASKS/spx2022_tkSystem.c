@@ -117,7 +117,7 @@ bool poll_data(dataRcd_s *dataRcd)
      * Lo hacemos aqui asi es una funcion que se puede invocar desde Cmd.
      */
 bool f_status;
-uint8_t channel;
+//uint8_t channel;
 float mag;
 uint16_t raw;
 bool retS = false;
@@ -152,11 +152,16 @@ bool retS = false;
         
     // Leo el valor de los contadores
     counters_read( systemVars.counters, systemConf.counters_conf );
+    counters_convergencia();
     counters_clear();
-        
+       
+    // Leo los canales modbus 
+    modbus_read ( systemVars.modbus, systemConf.modbus_conf);
+    
     // Armo el dr.
     memcpy(dataRcd->l_ainputs, systemVars.ainputs, sizeof(dataRcd->l_ainputs));
-    memcpy(dataRcd->l_counters, systemVars.counters, sizeof(dataRcd->l_counters));  
+    memcpy(dataRcd->l_counters, systemVars.counters, sizeof(dataRcd->l_counters)); 
+    memcpy(dataRcd->l_modbus, systemVars.modbus, sizeof(dataRcd->l_modbus)); 
     dataRcd->battery = systemVars.battery;  
     
     // Agrego el timestamp.

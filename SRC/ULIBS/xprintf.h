@@ -24,6 +24,8 @@ int xfprintf_P( int fd, PGM_P fmt, ...);
 int xputs( const char *str );
 int xfputs( int fd, const char *str );
 
+int xnprintf( int fd, const char *pvBuffer, const uint16_t xBytes );
+
 void putch(char c);
 void xputChar(unsigned char c);
 void xfputChar(int fd, unsigned char c);

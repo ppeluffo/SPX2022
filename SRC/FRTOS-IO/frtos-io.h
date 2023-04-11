@@ -22,6 +22,7 @@
 
 #include <avr/io.h>
 #include <avr/interrupt.h>
+#include <util/delay.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -35,7 +36,9 @@
 typedef enum {
 	fdTERM = 0,  
     fdRS485A,
+    fdRS485A_MODBUS,
     fdRS485B,
+    fdRS485B_MODBUS,
     fdXCOMMS,
     fdNVM,
     fdI2C0,
@@ -85,16 +88,18 @@ StaticSemaphore_t I2C0_xMutexBuffer, I2C1_xMutexBuffer;
 #define ioctl_UART_DISABLE_TX			11
 #define ioctl_UART_ENABLE_RX			12
 #define ioctl_UART_DISABLE_RX			13
+#define ioctl_UART_SET_RTS              14
+#define ioctl_UART_CLEAR_RTS			15
 
-#define ioctl_I2C_SET_DEVADDRESS		14
-//#define ioctl_I2C_SET_DEVADDRESSLENGTH	15
-#define ioctl_I2C_SET_DATAADDRESS		16
-#define ioctl_I2C_SET_DATAADDRESSLENGTH	17
-#define ioctl_I2C_GET_LAST_ERROR		18
-//#define ioctl_I2C_SCAN					19
-#define ioctl_I2C_SET_DEBUG				20
-#define ioctl_I2C_CLEAR_DEBUG           21
-#define ioctl_I2C_RESET                 22
+#define ioctl_I2C_SET_DEVADDRESS		20
+//#define ioctl_I2C_SET_DEVADDRESSLENGTH	21
+#define ioctl_I2C_SET_DATAADDRESS		22
+#define ioctl_I2C_SET_DATAADDRESSLENGTH	23
+#define ioctl_I2C_GET_LAST_ERROR		24
+//#define ioctl_I2C_SCAN					25
+#define ioctl_I2C_SET_DEBUG				26
+#define ioctl_I2C_CLEAR_DEBUG           27
+#define ioctl_I2C_RESET                 28
 
 #define ioctl_NVM_SET_EEADDRESS         30
 
@@ -112,7 +117,9 @@ int16_t frtos_open_i2c( volatile TWI_t *twi, periferico_i2c_port_t *xI2c, file_d
 
 int16_t frtos_write( file_descriptor_t fd ,const char *pvBuffer, const uint16_t xBytes );
 int16_t frtos_write_uart0( const char *pvBuffer, const uint16_t xBytes );
+int16_t frtos_write_modbus_uart0( const char *pvBuffer, const uint16_t xBytes );
 int16_t frtos_write_uart1( const char *pvBuffer, const uint16_t xBytes );
+int16_t frtos_write_modbus_uart1( const char *pvBuffer, const uint16_t xBytes );
 int16_t frtos_write_uart2( const char *pvBuffer, const uint16_t xBytes );
 int16_t frtos_write_uart3( const char *pvBuffer, const uint16_t xBytes );
 int16_t frtos_write_nvm( periferico_nvm_t *xNVM, const char *pvBuffer, const uint16_t xBytes );

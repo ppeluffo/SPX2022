@@ -265,6 +265,7 @@ int16_t wrBytes  = 0;
 	memset ( &rtc, '\0', sizeof(RtcTimeType_t));
 
 	RTC_str2rtc( stime, &rtc);			// Convierto el string YYMMDDHHMM a RTC.
+    
 	wrBytes = RTC_write_dtime(&rtc);		// Grabo el RTC
 	if ( wrBytes == -1 ) {
 		xprintf_P(PSTR("ERROR: I2C:RTC:pv_cmd_rwRTC\r\n"));

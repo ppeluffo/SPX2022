@@ -14,6 +14,7 @@ static void cmdTestFunction(void);
 
 static void pv_snprintfP_OK(void );
 static void pv_snprintfP_ERR(void );
+static bool pv_cmd_modbus(void);
 
 char rw_buffer[FF_RECD_SIZE];
 
@@ -31,7 +32,7 @@ void tkCmd(void * pvParameters)
 	//vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
 
 uint8_t c = 0;
-uint16_t sleep_timeout;
+//uint16_t sleep_timeout;
 
     FRTOS_CMD_init();
 
@@ -47,7 +48,7 @@ uint16_t sleep_timeout;
     xprintf_P(PSTR("Starting tkCmd..\r\n" ));
     xprintf_P(PSTR("Spymovil %s %s %s %s \r\n") , HW_MODELO, FRTOS_VERSION, FW_REV, FW_DATE);
     
-    sleep_timeout = 1500; // Espero hasta 30s secs
+    //sleep_timeout = 1500; // Espero hasta 30s secs
     
 	// loop
 	for( ;; )
@@ -59,7 +60,7 @@ uint16_t sleep_timeout;
 		//while ( frtos_read( fdTERM, (char *)&c, 1 ) == 1 ) {
         while ( xgetc( (char *)&c ) == 1 ) {
             FRTOS_CMD_process(c);
-            sleep_timeout = 1500;
+            //sleep_timeout = 1500;
         }
         
         // Espero 10ms si no hay caracteres en el buffer
@@ -83,6 +84,27 @@ static void cmdTestFunction(void)
     FRTOS_CMD_makeArgv();
 
 dataRcd_s dr;
+
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("MBUSHASH"))  ) {
+        //test_wan_modbus();
+        return;
+    }
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("FLUSH"))  ) {
+        //test_commsA_flush();
+        return;
+    }
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("BUFFA"))  ) {
+        //xprintf_P(PSTR("BUFFA SIZE = %d\r\n"), test_commsA_getCount());
+        return;
+    }
+
+    if (!strcmp_P( strupr(argv[1]), PSTR("BUFFB"))  ) {
+        //xprintf_P(PSTR("BUFFB SIZE = %d\r\n"), MODBUS_getRXCount());
+        return;
+    }
 
     if (!strcmp_P( strupr(argv[1]), PSTR("RB"))  ) {
         counters_test_rb(argv[2]);
@@ -211,6 +233,8 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  oc,k1,k2 {open/close}, vsensors420 {on/off}\r\n"));
         xprintf_P( PSTR("  ina {confValue}\r\n"));
         xprintf_P( PSTR("  rs485a {string}, rs485b {string}\r\n"));
+        xprintf_P( PSTR("  mbustest genpoll {slaaddr,regaddr,nro_regs,fcode,type,codec}\r\n"));
+        xprintf_P( PSTR("           chpoll {ch}\r\n"));
         
     }  else if ( !strcmp_P( strupr(argv[1]), PSTR("READ"))) {
 		xprintf_P( PSTR("-read:\r\n"));
@@ -232,7 +256,11 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  pwrmodo {continuo,discreto,mixto}, pwron {hhmm}, pwroff {hhmm}\r\n"));
         xprintf_P( PSTR("  ainput {0..%d} aname imin imax mmin mmax offset\r\n"),( NRO_ANALOG_CHANNELS - 1 ) );
         xprintf_P( PSTR("  counter {0..%d} cname magPP modo(PULSO/CAUDAL)\r\n"), ( NRO_COUNTER_CHANNELS - 1 ) );
-        xprintf_P( PSTR("  debug {analog,counters,comms,none} {true/false}\r\n"));
+        xprintf_P( PSTR("  debug {analog,counters,comms,modbus,none} {true/false}\r\n"));
+        xprintf_P( PSTR("  modbus {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10\r\n"), ( NRO_MODBUS_CHANNELS - 1));
+		xprintf_P( PSTR("         fcode=>{3,6,16}\r\n"));
+		xprintf_P( PSTR("         type=>{i16,u16,i32,u32,float}\r\n"));
+		xprintf_P( PSTR("         codec=>{c0123,c1032,c3210,c2301}\r\n"));
         
     	// HELP RESET
 	} else if (!strcmp_P( strupr(argv[1]), PSTR("RESET"))) {
@@ -424,6 +452,7 @@ fat_s l_fat;
     WAN_print_configuration();
     ainputs_print_configuration( systemConf.ainputs_conf);
     counters_config_print( systemConf.counters_conf);
+    modbus_print_configuration( systemConf.modbus_conf);
     
     xprintf_P(PSTR("Values:\r\n"));
     xprintf_P(PSTR(" Rele: %d\r\n"), systemVars.rele_output);
@@ -436,7 +465,16 @@ static void cmdWriteFunction(void)
 {
 
     FRTOS_CMD_makeArgv(); 
-
+    
+    // MODBUS
+	// mbustest genpoll {type(F|I} sla fcode addr length }\r\n\0"));
+	// mbustest frame length {b0..bn}
+	//          chpoll {ch}\r\n\0"));
+	if ( strcmp_P( strupr(argv[1]), PSTR("MBUSTEST")) == 0 ) {
+		pv_cmd_modbus() ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}  
+    
     // RS485A
     // write rs485a {string}
     if ((strcmp_P( strupr(argv[1]), PSTR("RS485A")) == 0) ) {
@@ -444,7 +482,7 @@ static void cmdWriteFunction(void)
         pv_snprintfP_OK();
         return;
     }
-
+    
     if ((strcmp_P( strupr(argv[1]), PSTR("SUSPEND")) == 0) ) {
         vTaskSuspend( xHandle_tkSys );
         vTaskSuspend( xHandle_tkRS485A );
@@ -461,7 +499,7 @@ static void cmdWriteFunction(void)
         pv_snprintfP_OK();
         return;
     }
-    
+
     // INA
 	// write ina rconfValue
 	// Solo escribimos el registro 0 de configuracion.
@@ -471,7 +509,7 @@ static void cmdWriteFunction(void)
         INA_sleep();
 		return;
 	}
-    
+
     // write VSENSORS420 on/off
 	if (!strcmp_P( strupr(argv[1]), PSTR("VSENSORS420")) ) {
         if (!strcmp_P( strupr(argv[2]), PSTR("ON")) ) {
@@ -487,7 +525,7 @@ static void cmdWriteFunction(void)
         pv_snprintfP_ERR();
         return;
 	}
-    
+
 	// write oc,k1,k2 open/close
 	if (!strcmp_P( strupr(argv[1]), PSTR("OC")) ) {
         if (!strcmp_P( strupr(argv[2]), PSTR("OPEN")) ) {
@@ -502,6 +540,7 @@ static void cmdWriteFunction(void)
         }
         pv_snprintfP_ERR();
         return;
+        
 	} else if (!strcmp_P( strupr(argv[1]), PSTR("K1")) ) {
         if (!strcmp_P( strupr(argv[2]), PSTR("OPEN")) ) {
             RELE_K1_OPEN();
@@ -515,6 +554,7 @@ static void cmdWriteFunction(void)
         }
         pv_snprintfP_ERR();
         return; 
+        
 	} else if (!strcmp_P( strupr(argv[1]), PSTR("K2")) ) {
         if (!strcmp_P( strupr(argv[2]), PSTR("OPEN")) ) {
             RELE_K2_OPEN();
@@ -528,12 +568,8 @@ static void cmdWriteFunction(void)
         }
         pv_snprintfP_ERR();
         return; 
-    } else {
-        pv_snprintfP_ERR();
-        return; 
+    
     }
-        
-        
         
    	// EE
 	// write ee pos string
@@ -541,7 +577,7 @@ static void cmdWriteFunction(void)
 		( EE_test_write ( argv[2], argv[3], argv[4] ) > 0)?  pv_snprintfP_OK() : pv_snprintfP_ERR();
 		return;
 	}
-    
+
     // RTC
 	// write rtc YYMMDDhhmm
 	if ( strcmp_P( strupr(argv[1]), PSTR("RTC")) == 0 ) {
@@ -577,6 +613,14 @@ bool retS = false;
     
     FRTOS_CMD_makeArgv();
 
+    // MODBUS:
+    // config modbus {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10
+	if ( strcmp_P ( strupr( argv[1]), PSTR("MODBUS")) == 0 ) {
+		retS = modbus_config_channel( atoi(argv[2]), systemConf.modbus_conf, argv[3], argv[4], argv[5], argv[6], argv[7], argv[8],argv[9],argv[10] );
+		retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}
+    
     // samples {1..20}
     if (!strcmp_P( strupr(argv[1]), PSTR("SAMPLES"))) {
         config_samples(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
@@ -704,5 +748,24 @@ static void pv_snprintfP_OK(void )
 static void pv_snprintfP_ERR(void)
 {
 	xprintf("error\r\n\0");
+}
+//------------------------------------------------------------------------------
+static bool pv_cmd_modbus(void)
+{
+    
+	// modbus genpoll {type(F|I} sla fcode addr nro_recds
+	if ( strcmp_P( strupr(argv[2]), PSTR("GENPOLL")) == 0 ) {
+		modbus_test_genpoll(argv);
+		return(true);
+	}
+    
+    // modbus chpoll {ch}
+	if ( strcmp_P( strupr(argv[2]), PSTR("CHPOLL")) == 0 ) {
+		modbus_test_channel(argv[3], systemConf.modbus_conf );
+		return(true);
+	}
+
+	return(false);
+
 }
 //------------------------------------------------------------------------------

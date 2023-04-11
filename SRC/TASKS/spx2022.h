@@ -84,13 +84,13 @@ extern "C" {
 #include "fileSystem.h"
 #include "counters.h"
 #include "ainputs.h"
+#include "modbus.h"
 
-
-#define FW_REV "1.0.6"
-#define FW_DATE "@ 20230202"
+#define FW_REV "1.0.7"
+#define FW_DATE "@ 20230411"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
-#define FW_TYPE "SPXR2"
+#define FW_TYPE "SPXR3"
 
 #define SYSMAINCLK 24
 
@@ -155,8 +155,9 @@ void reset(void);
 
 typedef struct {
     float l_ainputs[NRO_ANALOG_CHANNELS];
-    float battery;
     float l_counters[NRO_COUNTER_CHANNELS];
+    float l_modbus[NRO_MODBUS_CHANNELS];
+    float battery;
     RtcTimeType_t  rtc;	
 } dataRcd_s;
 
@@ -197,6 +198,10 @@ void WAN_config_debug(bool debug );
 bool WAN_read_debug(void);
 void WAN_put(uint8_t c);
 
+void MODBUS_flush_RXbuffer(void);
+uint16_t MODBUS_getRXCount(void);
+char *MODBUS_RXBufferInit(void);
+
 bool starting_flag;
 
 #define DLGID_LENGTH		12
@@ -207,6 +212,7 @@ struct {
     float ainputs[NRO_ANALOG_CHANNELS];
     float battery;
     float counters[NRO_COUNTER_CHANNELS];
+    float modbus[NRO_MODBUS_CHANNELS];
 } systemVars;
 
 typedef enum { WAN_RS485B = 0, WAN_NBIOT } wan_port_t;
@@ -225,6 +231,7 @@ struct {
     counter_conf_t counters_conf[NRO_COUNTER_CHANNELS];
     uint8_t samples_count;      // Nro. de muestras para promediar una medida
     uint8_t alarm_level;        // Nivel de variacion de medidas para transmitir.
+    modbus_conf_t modbus_conf[NRO_MODBUS_CHANNELS];
     
     // El checksum SIEMPRE debe ser el ultimo byte !!!!!
     uint8_t checksum;
@@ -246,7 +253,6 @@ uint8_t sys_watchdog;
 #define WDG_bm 0x1F
 
 #define WDG_INIT() ( sys_watchdog = WDG_bm )
-
 
 #endif	/* XC_HEADER_TEMPLATE_H */
 

@@ -1,8 +1,13 @@
 #include "spx2022.h"
 #include "frtos_cmd.h"
 
+/*
+ * El RS485B esta conectado al UART0 que es el que atiende el modem
+ * El buffer debe ser suficientemente grande para recibir los frames de
+ * configuracion del servidor
+ */
 
-#define RS485B_BUFFER_SIZE 64
+#define RS485B_BUFFER_SIZE 255
 
 char rs485B_buffer[RS485B_BUFFER_SIZE];
 lBuffer_s commsB_lbuffer;

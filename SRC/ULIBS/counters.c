@@ -24,7 +24,7 @@ typedef struct {
     float caudal;
 } t_caudal_s;
 
-#define MAX_RB_CAUDAL_STORAGE_SIZE  10
+#define MAX_RB_CAUDAL_STORAGE_SIZE  5
 t_caudal_s caudal_storage_0[MAX_RB_CAUDAL_STORAGE_SIZE];
 t_caudal_s caudal_storage_1[MAX_RB_CAUDAL_STORAGE_SIZE];
 rBstruct_s caudal_RB_0,caudal_RB_1;
@@ -89,7 +89,8 @@ void counters_config_defaults( counter_conf_t *counters_conf )
 uint8_t i = 0;
 
 	for ( i = 0; i < NRO_COUNTER_CHANNELS; i++ ) {
-		snprintf_P( counters_conf[i].name, CNT_PARAMNAME_LENGTH, PSTR("C%d\0"),i );
+		//snprintf_P( counters_conf[i].name, CNT_PARAMNAME_LENGTH, PSTR("X%d\0"),i );
+        snprintf_P( counters_conf[i].name, CNT_PARAMNAME_LENGTH, PSTR("X") );
 		counters_conf[i].magpp = 1;
         counters_conf[i].modo_medida = CAUDAL;
 	}
@@ -197,7 +198,7 @@ uint8_t counter_read_pin(uint8_t cnt)
 void counter_FSM(uint8_t i, counter_conf_t *counters_conf )
 {
 
-uint16_t duracion_pulso_ticks;
+uint16_t duracion_pulso_ticks = 0;
 t_caudal_s rb_element;
  
     // Esta funcion la invoca el timerCallback. c/vez sumo 1 para tener los ticks
@@ -290,12 +291,49 @@ t_caudal_s rb_element;
 
 }
 //------------------------------------------------------------------------------
+void counters_convergencia(void)
+{
+    /*
+     * Esta opcion es para asegurar la convergencia del valor
+     * en la medida que el caudal es 0.
+     * En este caso debemos insertar un registro en el ringbuffer en 0 si 
+     * en el periodo no llegaron pulsos.
+     * OJO: Esto va antes de poner los contadores en 0. !!!
+     */
+  
+uint8_t cnt;
+t_caudal_s rb_element;
+
+    //xprintf_P(PSTR("DEBUG COUNTERS CLEAR\r\n"));
+    for ( cnt=0; cnt < NRO_COUNTER_CHANNELS; cnt++) {
+        
+        // Aseguro la convergencia a 0 de los caudales
+        if ( CNTCB[cnt].pulse_count == 0 ) {
+            rb_element.caudal = 0.0;
+            if (cnt==0) {
+                rBstruct_insert_at_tail( &caudal_RB_0, &rb_element );
+            } else {
+                rBstruct_insert_at_tail( &caudal_RB_1, &rb_element );
+            }
+        }
+    }
+
+}
+//------------------------------------------------------------------------------
 void counters_clear(void)
 {
+   /*
+    * Una vez por periodo ( timerpoll ) borro los contadores.
+    * Si en el periodo NO llegaron pulsos, aqui debo entonces en los
+    * caudales agregar un 0.0 al ring buffer para que luego de un tiempo
+    * converja a 0.
+    * 
+    */
     
 uint8_t cnt;
-    
-    for ( cnt=0; cnt < NRO_COUNTER_CHANNELS; cnt++) {
+
+    //xprintf_P(PSTR("DEBUG COUNTERS CLEAR\r\n"));
+    for ( cnt=0; cnt < NRO_COUNTER_CHANNELS; cnt++) {        
         CNTCB[cnt].pulse_count = 0;
         CNTCB[cnt].caudal = 0.0;
     }
@@ -319,6 +357,7 @@ uint8_t i;
         }
 
     }
+    
 }
 //------------------------------------------------------------------------------
 void promediar_rb_caudal(void)
@@ -338,20 +377,26 @@ float q0,q1, Qavg0,Qavg1;
         rb_element = caudal_storage_1[i];
         q1 = rb_element.caudal;
         Qavg1 += q1;
-        //xprintf_P(PSTR("DEBUG: i=%d [q0=%0.3f, avgQ0=%0.3f] [q1=%0.3f, avgQ1=%0.3f]\r\n"), i, q0, Qavg0,q1,Qavg1);
+        if ( f_debug_counters ) {
+            xprintf_P(PSTR("DEBUG: i=%d [q0=%0.3f, avgQ0=%0.3f] [q1=%0.3f, avgQ1=%0.3f]\r\n"), i, q0, Qavg0,q1,Qavg1);
+        }
     }
     
     Qavg0 /= MAX_RB_CAUDAL_STORAGE_SIZE;
     Qavg1 /= MAX_RB_CAUDAL_STORAGE_SIZE;
     CNTCB[0].caudal = Qavg0;
     CNTCB[1].caudal = Qavg1;
+    
+    if ( f_debug_counters ) {
+        xprintf_P(PSTR("DEBUG: Qavg0=%0.3f, Qavg1=%0.3f\r\n"), Qavg0,Qavg1);
+    }
 
 }
 //------------------------------------------------------------------------------
 void counters_test_rb(char *data)
 {
     
-    //ardo el data en el RB, lo promedio, imprimo el RB y el promedio
+    //guardo el data en el RB, lo promedio, imprimo el RB y el promedio
     
 /*
 t_caudal_s rb_element;

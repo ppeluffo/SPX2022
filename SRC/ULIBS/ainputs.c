@@ -145,11 +145,11 @@ uint8_t channel = 0;
 		ainputs_conf[channel].mmin = 0.0;
 		ainputs_conf[channel].mmax = 10.0;
 		ainputs_conf[channel].offset = 0.0;
-
-		snprintf_P( ainputs_conf[channel].name, AIN_PARAMNAME_LENGTH, PSTR("A%d\0"),channel );
+        snprintf_P( ainputs_conf[channel].name, AIN_PARAMNAME_LENGTH, PSTR("X%d\0"),channel );
+		snprintf_P( ainputs_conf[channel].name, AIN_PARAMNAME_LENGTH, PSTR("X") );
 	}
 
-    snprintf_P( ainputs_conf[2].name, AIN_PARAMNAME_LENGTH, PSTR("X"));
+    //snprintf_P( ainputs_conf[2].name, AIN_PARAMNAME_LENGTH, PSTR("X"));
 
 }
 //------------------------------------------------------------------------------

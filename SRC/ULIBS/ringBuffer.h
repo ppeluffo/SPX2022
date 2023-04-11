@@ -69,6 +69,7 @@ typedef struct {
 void rBstruct_CreateStatic ( rBstruct_s *rB, void *storage_area, uint16_t buffersize, uint16_t elementsize, bool f_overwrite  );
 bool rBstruct_Poke( rBstruct_s *rB, void *element );
 bool rBstruct_Pop( rBstruct_s *rB, void *element );
+bool rBstruct_insert_at_tail( rBstruct_s *rB, void *element );
 bool rBstruct_PopRead( rBstruct_s *rB, void *element );
 void rBstruct_Flush( rBstruct_s *rB );
 uint16_t rBstruct_GetCount( rBstruct_s *rB );

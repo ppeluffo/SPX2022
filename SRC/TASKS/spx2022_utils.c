@@ -106,7 +106,8 @@ void config_default(void)
  
     ainputs_config_defaults(systemConf.ainputs_conf);
     counters_config_defaults(systemConf.counters_conf);
-  
+    modbus_config_defaults(systemConf.modbus_conf);
+    
 }
 //------------------------------------------------------------------------------
 bool config_debug( char *tipo, char *valor)
@@ -119,6 +120,17 @@ bool config_debug( char *tipo, char *valor)
         ainputs_config_debug(false);
         counters_config_debug(false);
         return(true); 
+    }
+
+    if (!strcmp_P( strupr(tipo), PSTR("MODBUS")) ) {
+        if (!strcmp_P( strupr(valor), PSTR("TRUE")) ) {
+            modbus_config_debug(true);
+            return(true);
+        }
+        if (!strcmp_P( strupr(valor), PSTR("FALSE")) ) {
+            modbus_config_debug(false);
+            return(true);
+        }
     }
     
     if (!strcmp_P( strupr(tipo), PSTR("ANALOG")) ) {
@@ -396,6 +408,7 @@ uint16_t hh, mm;
             xprintf_P(PSTR("    inicio discreto -> %02d:%02d\r\n"), hh,mm);
             break;
     }
+    xprintf_P(PSTR(" pwr_on:%d, pwr_off:%d\r\n"),systemConf.pwr_hhmm_on, systemConf.pwr_hhmm_off );
 }
 //------------------------------------------------------------------------------
 void xprint_dr(dataRcd_s *dr)
@@ -424,6 +437,13 @@ uint8_t channel;
     for ( channel=0; channel < NRO_COUNTER_CHANNELS; channel++) {
         if ( strcmp ( systemConf.counters_conf[channel].name, "X" ) != 0 ) {
             xprintf_P( PSTR("%s:%0.3f;"), systemConf.counters_conf[channel].name, dr->l_counters[channel]);
+        }
+    }
+
+    // Modbus Channels:
+    for ( channel=0; channel < NRO_MODBUS_CHANNELS; channel++) {
+        if ( strcmp ( systemConf.modbus_conf[channel].name, "X" ) != 0 ) {
+            xprintf_P( PSTR("%s:%0.3f;"), systemConf.modbus_conf[channel].name, dr->l_modbus[channel]);
         }
     }
     

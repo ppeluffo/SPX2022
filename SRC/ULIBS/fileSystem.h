@@ -26,14 +26,14 @@ extern "C" {
 #include "rtc79410.h"
     
 #define FF_SIZE_IN_KB	128		// Tamanio en KB de la eeprom externa.
-#define FF_RECD_SIZE	32		// Tamanio del registro
-#define FS_WRBUFF_SIZE  32
-#define FS_RDBUFF_SIZE  32
-#define FS_PAGE_SIZE    32      //256
+#define FF_RECD_SIZE	64		// Tamanio del registro
+#define FS_WRBUFF_SIZE  64
+#define FS_RDBUFF_SIZE  64
+#define FS_PAGE_SIZE    64      //256
     
 #define FF_ADDR_START	0		// Posicion inicial
 //#define FF_MAX_RCDS		64	// Cantidad de registros ( max 4096 en M24CM02 ).
-#define FF_MAX_RCDS		4096    // ( FF_SIZE_IN_KB * 1024 / FF_RECD_SIZE )
+#define FF_MAX_RCDS		1024    // ( FF_SIZE_IN_KB * 1024 / FF_RECD_SIZE )
 //#define FF_MAX_RCDS		512
     
 #define FF_WRTAG	0xC5	// 1100 0101

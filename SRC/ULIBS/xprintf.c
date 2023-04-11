@@ -292,3 +292,28 @@ void xputCharNS(unsigned char c)
 
 }
 //------------------------------------------------------------------------------
+int xnprintf( int fd, const char *pvBuffer, const uint16_t xBytes )
+{
+	/* Imprime en fd sin formatear
+	   No uso stdout_buff por lo tanto no requeriria semaforo pero igual
+	   lo uso para evitar colisiones. De este modo todo el acceso al uart queda
+	   siempre controlado por el semaforo
+	   La funcion frtos_write_modbus es la que activa el RTS
+	*/
+
+int bytes2wr = 0;
+
+	//xprintf_P(PSTR("DEBUG MBUS: [%s][%d]\r\n"), pvBuffer, xBytes);
+
+    frtos_ioctl( fd, ioctl_UART_CLEAR_TX_BUFFER, NULL );
+    frtos_ioctl( fd, ioctl_UART_CLEAR_RX_BUFFER, NULL );
+
+	while ( xSemaphoreTake( sem_STDOUT, ( TickType_t ) 5 ) != pdTRUE )
+		vTaskDelay( ( TickType_t)( 5 ) );
+
+    bytes2wr = frtos_write ( fd, pvBuffer, xBytes );
+
+	xSemaphoreGive( sem_STDOUT );
+	return(bytes2wr);
+}
+//------------------------------------------------------------------------------

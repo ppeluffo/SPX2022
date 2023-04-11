@@ -105,6 +105,38 @@ void *p;
 	return(ret);
 }
 //------------------------------------------------------------------------------
+bool rBstruct_insert_at_tail( rBstruct_s *rB, void *element )
+{
+
+	// Pone el ultimo elemento (tail) en 0 y lo saca del RB.
+    // Esto es porque al calcular los promedios, no usamos la cola sino que
+    // debemos ponerlo a 0 antes.
+
+bool ret = false;
+void *p;
+
+	taskENTER_CRITICAL();
+	//  Si el buffer esta vacio retorno.
+	if( rB->count == 0) {
+		rB->head = rB->tail = 0;
+		taskEXIT_CRITICAL();
+		return(ret);
+	}
+
+	p =  (rB->buff);
+	p += sizeof(uint8_t)*( rB->tail * rB->elementsize);
+
+    memcpy( p, element, rB->elementsize );
+    
+	--rB->count;
+	// Avanzo en modo circular
+	rB->tail = ( rB->tail  + 1 ) % ( rB->length );
+	ret = true;
+
+	taskEXIT_CRITICAL();
+	return(ret);
+}
+//------------------------------------------------------------------------------
 bool rBstruct_PopRead( rBstruct_s *rB, void *element )
 {
 

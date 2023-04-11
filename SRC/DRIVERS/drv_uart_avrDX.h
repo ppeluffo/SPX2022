@@ -26,7 +26,7 @@
 //-----------------------------------------------------------------------
 #define UART0_TXSIZE	8	// trasmito por poleo. Si uso interrupcion lo subo a 128
 uint8_t uart0_txBuffer[UART0_TXSIZE];
-#define UART0_RXSIZE	64	// 
+#define UART0_RXSIZE	255	// Este UART es el que atiende el modem.
 uint8_t uart0_rxBuffer[UART0_RXSIZE];
 rBchar_s TXRB_uart0, RXRB_uart0;
 void drv_uart0_init(uint32_t baudrate );

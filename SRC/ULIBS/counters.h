@@ -63,6 +63,7 @@ void counters_config_debug(bool debug );
 bool counters_read_debug(void);
 void counter_FSM(uint8_t i, counter_conf_t *counter_conf );
 void counters_clear(void);
+void counters_convergencia(void);
 uint8_t counters_read_pin(uint8_t cnt);
 void counters_read( float *l_counters, counter_conf_t *counter_conf );
 uint8_t CNT0_read(void);
