@@ -86,8 +86,8 @@ extern "C" {
 #include "ainputs.h"
 #include "modbus.h"
 
-#define FW_REV "1.0.7"
-#define FW_DATE "@ 20230411"
+#define FW_REV "1.0.9"
+#define FW_DATE "@ 20230519"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR3"

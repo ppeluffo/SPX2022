@@ -134,11 +134,14 @@ BaseType_t xResult;
     // Cuando inicio me conecto siempre sin esperar para configurarme y vaciar la memoria.
     if ( f_inicio ) {
         f_inicio = false;
+        //xprintf_P(PSTR("DEBUG Finicio\r\n"));
         goto exit;
     }
     
     pwr_modo = wan_check_pwr_modo_now();
     
+    //xprintf_P(PSTR("DEBUG: timerdial=%d, pwr_modo=%d\r\n"), systemConf.timerdial, systemConf.pwr_modo );
+                
     // En modo continuo salgo enseguida. No importa timerdial
     if ( pwr_modo == PWR_CONTINUO) {
         vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
@@ -167,7 +170,7 @@ BaseType_t xResult;
 			xResult = xTaskNotifyWait( 0x00, ULONG_MAX, &ulNotifiedValue, ( TickType_t)( 60000 / portTICK_PERIOD_MS ) );
 			if ( xResult == pdTRUE ) {
 				if ( ( ulNotifiedValue & DATA_FRAME_READY ) != 0 ) {
-                    xprintf_P(PSTR("DEBUG: WAN SIGNAL RCVD\r\n"));
+                    //xprintf_P(PSTR("DEBUG: WAN SIGNAL RCVD\r\n"));
 					goto exit;
 				}
 			}
@@ -217,7 +220,7 @@ static void wan_state_online_config(void)
      * indica si ya se configuro.
      */
   
-uint16_t i;
+//uint16_t i;
     
     xprintf_P(PSTR("WAN:: State ONLINE_CONFIG\r\n"));
     kick_wdt(XWAN_WDG_bp);
@@ -241,14 +244,23 @@ uint16_t i;
          */
     }
     
-    wan_process_frame_configBase();
+    if ( ! wan_process_frame_configBase() ) {
+        // No puedo configurarse o porque el servidor no responde
+        // o porque da errores. Espero 1H
+        xprintf_P(PSTR("WAN:: Errores en configuracion. Espero 1H..!!\r\n"));
+        systemConf.timerdial = 3600;
+        systemConf.timerpoll = 3600;
+        systemConf.pwr_modo = PWR_DISCRETO;
+        wan_state = WAN_APAGADO;
+        return;
+    }
     wan_process_frame_configAinputs();
     wan_process_frame_configCounters();
     wan_process_frame_configModbus();
     save_config_in_NVM();    
     wan_state = WAN_ONLINE_DATA;
     
-quit:
+//quit:
                 
     return;
 
@@ -390,7 +402,7 @@ bool retS = false;
         timeout = 15;
         while ( timeout-- > 0) {
             vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-            if ( wan_check_response("CLASS=PONG")) {
+            if ( wan_check_response("CLASS=PONG")) {        
                 wan_print_RXbuffer();
                 xprintf_P(PSTR("WAN:: Link up.\r\n"));
                 retS = true;
@@ -434,7 +446,7 @@ bool retS = false;
         vTaskDelay( ( TickType_t)( 1 ) );
     memset(wan_tx_buffer, '\0', WAN_TX_BUFFER_SIZE);
     fptr = 0;
-    fptr = sprintf_P( (char*)&wan_tx_buffer[fptr], PSTR("ID:%s;TYPE:%s;VER:%s;CLASS:RECOVER;UID:%s"), systemConf.dlgid, FW_TYPE, FW_REV, NVM_signature2str());
+    fptr = sprintf_P( (char*)&wan_tx_buffer[fptr], PSTR("ID=%s&TYPE=%s&VER=%s&CLASS=RECOVER&UID=%s"), systemConf.dlgid, FW_TYPE, FW_REV, NVM_signature2str());
 
     // Proceso. Envio hasta 2 veces el frame y espero hasta 10s la respuesta
     tryes = 2;
@@ -447,12 +459,12 @@ bool retS = false;
         timeout = 10;
         while ( timeout-- > 0) {
             vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-            if ( wan_check_response("CLASS:RECOVER;DLGID")) {
+            if ( wan_check_response("CLASS=RECOVER&DLGID")) {
                 wan_print_RXbuffer();
                 wan_process_rsp_recoverId();
                 retS = true;
                 goto exit_;
-            } else if ( wan_check_response("CONFIG:ERROR")) {
+            } else if ( wan_check_response("CONFIG=ERROR")) {
                 wan_print_RXbuffer();
                 xprintf_P(PSTR("WAN:: RECOVERID ERROR: El servidor no reconoce al datalogger !!\r\n"));
                 retS = false;
@@ -476,20 +488,20 @@ static bool wan_process_rsp_recoverId(void)
 {
     /*
      * Extraemos el DLGID del frame y lo reconfiguramos
-     * RXFRAME: <html><body><h1>CLASS:RECOVER;DLGID:xxxx</h1></body></html>
-     *          <html><body><h1>CLASS:RECOVER;DLGID:DEFAULT</h1></body></html>
+     * RXFRAME: <html><body><h1>CLASS=RECOVER&DLGID=xxxx</h1></body></html>
+     *          <html><body><h1>CLASS=RECOVER&DLGID=DEFAULT</h1></body></html>
      */
     
 char localStr[32] = { 0 };
 char *stringp = NULL;
 char *token = NULL;
-char *delim = ",;:=><";
+char *delim = "&,;:=><";
 char *ts = NULL;
 char *p;
 
     p = lBchar_get_buffer(&wan_lbuffer);
 	memset(localStr,'\0',sizeof(localStr));
-	ts = strstr( p, "RECOVER;");
+	ts = strstr( p, "RECOVER");
 	strncpy(localStr, ts, sizeof(localStr));
 	stringp = localStr;
 	token = strsep(&stringp,delim);	    // RECOVER
@@ -595,7 +607,7 @@ char *p;
         timeout = 10;
         while ( timeout-- > 0) {
             vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-            if ( wan_check_response("CONF_BASE&CONFIG=ERROR")) {
+            if ( wan_check_response("CONFIG=ERROR")) {
                 xprintf_P(PSTR("WAN:: CONF_BASE ERROR: El servidor no reconoce al datalogger !!\r\n"));
                 retS = false;
                 goto exit_;
@@ -646,6 +658,17 @@ bool retS = false;
     if  ( strstr( p, "CONFIG=OK") != NULL ) {
         retS = true;
        goto exit_;
+    }
+     
+    if  ( strstr( p, "CONFIG=ERROR") != NULL ) {
+        xprintf_P(PSTR("WAN:: CONF ERROR: El servidor no reconoce al datalogger !!\r\n"));
+        // Reconfiguro para espera 1h.!!!
+        xprintf_P(PSTR("WAN:: Reconfigurado para reintentar en 1H !!\r\n"));
+        systemConf.pwr_modo = PWR_DISCRETO;
+        systemConf.timerdial = 3600;
+        systemConf.timerpoll = 3600;
+        retS = false;
+        goto exit_;    
     }
                 
 	memset(localStr,'\0',sizeof(localStr));
@@ -761,7 +784,7 @@ char *p;
         while (*p != '\0') {
             hash = u_hash(hash, *p++);
         }
-        //xprintf_P(PSTR("HASH_AIN:<%s>, hash=%d\r\n"),hash_buffer, hash );
+        // xprintf_P(PSTR("HASH_AIN:<%s>, hash=%d\r\n"), hash_buffer, hash );
     }
  
     // Armo el buffer
@@ -782,7 +805,7 @@ char *p;
         timeout = 10;
         while ( timeout-- > 0) {
             vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-            if ( wan_check_response("CONF_AINPUTS&CONFIG=ERROR")) {
+            if ( wan_check_response("CONFIG=ERROR")) {
                 xprintf_P(PSTR("WAN:: CONF_AIPUTS ERROR: El servidor no reconoce al datalogger !!\r\n"));
                 retS = false;
                 goto exit_;
@@ -893,7 +916,7 @@ char *p;
         memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
         j = 0;
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("[C%d:%s,"), i, systemConf.counters_conf[i].name );
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.03f,%d]"), systemConf.counters_conf[i].magpp, systemConf.counters_conf[i].modo_medida );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.03f,%d,%d]"), systemConf.counters_conf[i].magpp, systemConf.counters_conf[i].modo_medida, systemConf.counters_conf[i].rb_size );
             
         p = (char *)hash_buffer;
         while (*p != '\0') {
@@ -920,7 +943,7 @@ char *p;
         timeout = 10;
         while ( timeout-- > 0) {
             vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-            if ( wan_check_response("CONF_COUNTERS&CONFIG=ERROR")) {
+            if ( wan_check_response("CONFIG=ERROR")) {
                 xprintf_P(PSTR("WAN:: CONF_COUNTERS ERROR: El servidor no reconoce al datalogger !!\r\n"));
                 retS = false;
                 goto exit_;
@@ -956,7 +979,7 @@ static bool wan_process_rsp_configCounters(void)
 {
     /*
      * Procesa la configuracion de los canales contadores
-     * RXFRAME: <html><body><h1>CLASS=CONF_COUNTERS&C0=q0,0.01,CAUDAL&C1=X,0.0,CAUDAL</h1></body></html>
+     * RXFRAME: <html><body><h1>CLASS=CONF_COUNTERS&C0=q0,0.01,CAUDAL,3&C1=X,0.0,CAUDAL,4</h1></body></html>
      * 
      */
 
@@ -966,7 +989,8 @@ char *stringp = NULL;
 char *tk_name = NULL;
 char *tk_magpp = NULL;
 char *tk_modo = NULL;
-char *delim = ",;:=><";
+char *tk_rbsize = NULL;
+char *delim = "&,;:=><";
 uint8_t ch;
 char str_base[8];
 char *p;
@@ -993,8 +1017,10 @@ bool retS = false;
 			tk_name = strsep(&stringp,delim);		//name
 			tk_magpp = strsep(&stringp,delim);		//magpp
 			tk_modo = strsep(&stringp,delim);
+            tk_rbsize = strsep(&stringp,delim);
 
-			counters_config_channel( ch ,systemConf.counters_conf, tk_name , tk_magpp, tk_modo );
+            //xprintf_P(PSTR("DEBUG: ch=%d, name=%s, magpp=%s, modo=%s\r\n"), ch, tk_name, tk_magpp, tk_modo);
+			counters_config_channel( ch ,systemConf.counters_conf, tk_name , tk_magpp, tk_modo, tk_rbsize );         
 			xprintf_P( PSTR("WAN:: Reconfig C%d\r\n"), ch);
 		}
 	}
@@ -1042,7 +1068,7 @@ uint8_t hash = 0;
         timeout = 10;
         while ( timeout-- > 0) {
             vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-            if ( wan_check_response("CONF_MODBUS&CONFIG=ERROR")) {
+            if ( wan_check_response("CONFIG=ERROR")) {
                 xprintf_P(PSTR("WAN:: CONF_MODBUS ERROR: El servidor no reconoce al datalogger !!\r\n"));
                 retS = false;
                 goto exit_;
@@ -1256,6 +1282,13 @@ int16_t fptr;
         }
     }
     
+    // Modbus Channels:
+    for ( channel=0; channel < NRO_MODBUS_CHANNELS; channel++) {
+        if ( strcmp ( systemConf.modbus_conf[channel].name, "X" ) != 0 ) {
+            fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.3f"), systemConf.modbus_conf[channel].name, dr->l_modbus[channel]);
+        }
+    }
+    
     // Battery
     fptr += sprintf_P( (char*)&buff[fptr], PSTR("&bt=%0.3f"), dr->battery);
     
@@ -1340,7 +1373,11 @@ char *p;
     p = lBchar_get_buffer(&wan_lbuffer);
         
     if  ( strstr( p, "</html>") != NULL ) {
-		// Recibi un frame completo   
+        
+        if (f_debug_comms)
+            xprintf_P( PSTR("rxbuff-> %s\r\n"), p);
+
+		// Recibi un frame completo  
         if ( strstr( p, s) != NULL ) {
             return(true);
         }

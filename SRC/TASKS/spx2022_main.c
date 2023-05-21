@@ -23,6 +23,13 @@
  * 1- Transmitir en modo bloque al hacer un dump.
  * 2- Consumo: entrar en modo tickless
  *
+ *
+ * -----------------------------------------------------------------------------
+ * V1.0.8 @ 20230505
+ * En los contadores incorporo el concepto de rb_size que sirve para determinar
+ * cuanto quiero promediar los contadores.
+ * El problema surge en perforaciones Colonia que no es util un promediado largo.
+ * 
  * -----------------------------------------------------------------------------
  * V1.0.7 @ 20230306
  * Incorporamos el modulo de modbus.

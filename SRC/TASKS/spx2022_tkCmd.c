@@ -107,7 +107,7 @@ dataRcd_s dr;
     }
 
     if (!strcmp_P( strupr(argv[1]), PSTR("RB"))  ) {
-        counters_test_rb(argv[2]);
+        //counters_test_rb(argv[2]);
         return;
     }
     
@@ -255,7 +255,7 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  timerpoll, timerdial, samples {1..10}, almlevel {0..100}\r\n"));
         xprintf_P( PSTR("  pwrmodo {continuo,discreto,mixto}, pwron {hhmm}, pwroff {hhmm}\r\n"));
         xprintf_P( PSTR("  ainput {0..%d} aname imin imax mmin mmax offset\r\n"),( NRO_ANALOG_CHANNELS - 1 ) );
-        xprintf_P( PSTR("  counter {0..%d} cname magPP modo(PULSO/CAUDAL)\r\n"), ( NRO_COUNTER_CHANNELS - 1 ) );
+        xprintf_P( PSTR("  counter {0..%d} cname magPP modo(PULSO/CAUDAL),rbsize\r\n"), ( NRO_COUNTER_CHANNELS - 1 ) );
         xprintf_P( PSTR("  debug {analog,counters,comms,modbus,none} {true/false}\r\n"));
         xprintf_P( PSTR("  modbus {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10\r\n"), ( NRO_MODBUS_CHANNELS - 1));
 		xprintf_P( PSTR("         fcode=>{3,6,16}\r\n"));
@@ -265,9 +265,14 @@ static void cmdHelpFunction(void)
     	// HELP RESET
 	} else if (!strcmp_P( strupr(argv[1]), PSTR("RESET"))) {
 		xprintf_P( PSTR("-reset\r\n"));
-        xprintf_P( PSTR("  memory {soft|hard}\r\n\0"));
+        xprintf_P( PSTR("  memory {soft|hard}\r\n"));
 		return;
-
+        
+    } else if (!strcmp_P( strupr(argv[1]), PSTR("TEST"))) {
+		xprintf_P( PSTR("-test\r\n"));
+        xprintf_P( PSTR("  kill {wan,sys}\r\n"));
+		return;
+        
     }  else {
         // HELP GENERAL
         xprintf("Available commands are:\r\n");
@@ -720,9 +725,9 @@ bool retS = false;
 	}
     
     // COUNTER
-    // counter {0..%d} cname magPP modo(PULSO/CAUDAL)
+    // counter {0..%d} cname magPP modo(PULSO/CAUDAL),rbsize
 	if (!strcmp_P( strupr(argv[1]), PSTR("COUNTER")) ) {
-        counters_config_channel( atoi(argv[2]), systemConf.counters_conf, argv[3], argv[4], argv[5] );
+        counters_config_channel( atoi(argv[2]), systemConf.counters_conf, argv[3], argv[4], argv[5], argv[6] );
         pv_snprintfP_OK();
 		return;
 	}

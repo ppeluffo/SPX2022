@@ -66,7 +66,9 @@ uint16_t MODBUS_getRXCount(void)
 char *MODBUS_RXBufferInit(void)
 {
     // Wrapper para usar en modbus_init
+    // Devuelve el inicio del buffer.
     
-    return ( lBchar_get_buffer(&commsA_lbuffer) );
+    //return ( lBchar_get_buffer(&commsA_lbuffer) );
+    return ( &rs485A_buffer[0] );
 }
 //------------------------------------------------------------------------------

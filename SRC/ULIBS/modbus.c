@@ -369,6 +369,9 @@ uint8_t i;
 	// borro buffers y espero 3.5T (9600) = 3.5ms ( START )
 	vTaskDelay( ( TickType_t)( 10 / portTICK_PERIOD_MS ) );
 
+    // Borro el rxBuffer antes de transmitir
+    ptrFuncFlush();
+    
 	// La funcion xnprintf_MBUS maneja el control de flujo.
 	i = xnprintf( FD_MODBUS, (const char *)mbus_cb->tx_buffer, mbus_cb->tx_size );
 
@@ -471,15 +474,18 @@ uint8_t i;
 int8_t lBytes, rBytes;
 int8_t timeout_counts;
 char *p;
+int max_rx_bytes;
+
 
 	//xprintf_PD( f_debug, PSTR("MODBUS: RX start\r\n"));
 
 	rBytes = -1;
 	lBytes = -1;
-	timeout_counts = 20;	// 20 x 50ms: espero 1 sec
+	timeout_counts = 50;	// 20 x 50ms: espero 1 sec
 
 	// Espero de a 50ms y voy contando lo caracteres que llegan
-	// hasta que no lleguen mas
+	// hasta que no lleguen mas.
+    // Se van almacenando en el commsA_buffer.
 	while ( timeout_counts-- > 0 ) {
 
         vTaskDelay( ( TickType_t)( 50 / portTICK_PERIOD_MS ) );
@@ -501,12 +507,26 @@ char *p;
     // Copio el buffer con los datos recibidos al rx_buffer. Como pueden
     // haber datos en 0x00 no uso strcpy.
     p = ptrFuncRXBufferInit();
-    for (i=0; i < ptrFuncGetCount(); i++ ) {
+
+    
+    // Control para no hacer overflow de buffer !!!
+    max_rx_bytes = ptrFuncGetCount();
+    if ( f_debug_modbus ) {
+        xprintf_P( PSTR("DEBUG: MODBUS: RX_RCVD=%d\r\n"), max_rx_bytes );
+    }
+    if ( max_rx_bytes > MBUS_RXMSG_LENGTH ) {
+        max_rx_bytes = MBUS_RXMSG_LENGTH;
+        xprintf_P( PSTR("DEBUG: MODBUS: RX_ERR\r\n") );
+    }
+    
+    //for (i=0; i < ptrFuncGetCount(); i++ ) {
+    for (i=0; i < max_rx_bytes; i++ ) {
 		mbus_cb->rx_buffer[i] = *p;
         //xprintf_P( PSTR("[0x%02X]"), mbus_cb->rx_buffer[i]);
         p++;
 	}
-    mbus_cb->rx_size = ptrFuncGetCount();
+    //mbus_cb->rx_size = ptrFuncGetCount();
+    mbus_cb->rx_size = i;
 
     // Ya lo copie: borro el buffer !!!!
     ptrFuncFlush();

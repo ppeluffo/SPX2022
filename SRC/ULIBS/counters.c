@@ -24,16 +24,19 @@ typedef struct {
     float caudal;
 } t_caudal_s;
 
-#define MAX_RB_CAUDAL_STORAGE_SIZE  5
+
 t_caudal_s caudal_storage_0[MAX_RB_CAUDAL_STORAGE_SIZE];
 t_caudal_s caudal_storage_1[MAX_RB_CAUDAL_STORAGE_SIZE];
 rBstruct_s caudal_RB_0,caudal_RB_1;
 
-void promediar_rb_caudal(void);
+void promediar_rb_caudal(counter_conf_t *counters_conf);
 
 // -----------------------------------------------------------------------------
 void counters_init( counter_conf_t *counters_conf )
 {
+    /*
+     * Agrego rb_size para que el tamaño de los buffers sea ajustable
+     */
     
 uint8_t i;
 
@@ -56,15 +59,18 @@ uint8_t i;
     rBstruct_CreateStatic ( 
         &caudal_RB_0, 
         &caudal_storage_0, 
-        MAX_RB_CAUDAL_STORAGE_SIZE, 
+        //MAX_RB_CAUDAL_STORAGE_SIZE, 
+        counters_conf[0].rb_size,
         sizeof(t_caudal_s), 
         true  
     );
 
+
     rBstruct_CreateStatic ( 
         &caudal_RB_1, 
         &caudal_storage_1, 
-        MAX_RB_CAUDAL_STORAGE_SIZE, 
+        //MAX_RB_CAUDAL_STORAGE_SIZE, 
+        counters_conf[1].rb_size,
         sizeof(t_caudal_s), 
         true  
     );
@@ -93,6 +99,7 @@ uint8_t i = 0;
         snprintf_P( counters_conf[i].name, CNT_PARAMNAME_LENGTH, PSTR("X") );
 		counters_conf[i].magpp = 1;
         counters_conf[i].modo_medida = CAUDAL;
+        counters_conf[i].rb_size = 1;
 	}
 }
 //------------------------------------------------------------------------------
@@ -113,16 +120,18 @@ uint8_t i = 0;
         
         xprintf_P( PSTR(" c%d: [%s,magpp=%.03f,"), i, counters_conf[i].name, counters_conf[i].magpp );
         if ( counters_conf[i].modo_medida == CAUDAL ) {
-            xprintf_P(PSTR("CAUDAL]\r\n"));
+            xprintf_P(PSTR("CAUDAL,"));
         } else {
-            xprintf_P(PSTR("PULSO]\r\n"));
+            xprintf_P(PSTR("PULSO,"));
         }
+        
+        xprintf_P( PSTR("rbsize=%d]\r\n"), counters_conf[i].rb_size );
 	}
 
             
 }
 //------------------------------------------------------------------------------
-bool counters_config_channel( uint8_t channel, counter_conf_t *counters_conf, char *s_name, char *s_magpp, char *s_modo )
+bool counters_config_channel( uint8_t channel, counter_conf_t *counters_conf, char *s_name, char *s_magpp, char *s_modo, char *s_rb_size )
 {
 	// Configuro un canal contador.
 	// channel: id del canal
@@ -157,6 +166,16 @@ bool retS = false;
 				xprintf_P(PSTR("ERROR: counters modo: PULSO/CAUDAL only!!\r\n"));
 			}
 		}
+        
+        if ( s_rb_size != NULL ) {
+            counters_conf[channel].rb_size = atoi(s_rb_size);
+        } else {
+            counters_conf[channel].rb_size = 1;
+        }
+        
+        if ( counters_conf[channel].rb_size > MAX_RB_CAUDAL_STORAGE_SIZE ) {
+            counters_conf[channel].rb_size = 1;
+        }
         
 		retS = true;
 	}
@@ -344,7 +363,7 @@ void counters_read( float *l_counters, counter_conf_t *counters_conf )
 
 uint8_t i;
     
-    promediar_rb_caudal();
+    promediar_rb_caudal(counters_conf);
     
     for (i=0; i < NRO_COUNTER_CHANNELS; i++) {
         
@@ -360,7 +379,7 @@ uint8_t i;
     
 }
 //------------------------------------------------------------------------------
-void promediar_rb_caudal(void)
+void promediar_rb_caudal(counter_conf_t *counters_conf)
 {
 uint8_t i;
 t_caudal_s rb_element;
@@ -368,33 +387,42 @@ float q0,q1, Qavg0,Qavg1;
 
     // Promedio los ringBuffers
     Qavg0=0.0;
-    Qavg1=0.0;
-
-    for (i=0; i<MAX_RB_CAUDAL_STORAGE_SIZE; i++) {
+    for (i=0; i < counters_conf[0].rb_size; i++) {
+        
         rb_element = caudal_storage_0[i];
         q0 = rb_element.caudal;
         Qavg0 += q0;
+        if ( f_debug_counters ) {
+            xprintf_P(PSTR("DEBUG: i=%d [q0=%0.3f, avgQ0=%0.3f]\r\n"), i, q0, Qavg0 );
+        }        
+    }
+    Qavg0 /= counters_conf[0].rb_size;
+    CNTCB[0].caudal = Qavg0;
+    if ( f_debug_counters ) {
+        xprintf_P(PSTR("DEBUG: Qavg0=%0.3f\r\n"), Qavg0 );
+    }
+    
+    
+    Qavg1=0.0;
+    for (i=0; i < counters_conf[1].rb_size; i++) {
+        
         rb_element = caudal_storage_1[i];
         q1 = rb_element.caudal;
         Qavg1 += q1;
         if ( f_debug_counters ) {
-            xprintf_P(PSTR("DEBUG: i=%d [q0=%0.3f, avgQ0=%0.3f] [q1=%0.3f, avgQ1=%0.3f]\r\n"), i, q0, Qavg0,q1,Qavg1);
-        }
+            xprintf_P(PSTR("DEBUG: i=%d [q1=%0.3f, avgQ1=%0.3f]\r\n"), i, q1, Qavg1 );
+        }        
     }
-    
-    Qavg0 /= MAX_RB_CAUDAL_STORAGE_SIZE;
-    Qavg1 /= MAX_RB_CAUDAL_STORAGE_SIZE;
-    CNTCB[0].caudal = Qavg0;
+    Qavg1 /= counters_conf[1].rb_size;
     CNTCB[1].caudal = Qavg1;
-    
     if ( f_debug_counters ) {
-        xprintf_P(PSTR("DEBUG: Qavg0=%0.3f, Qavg1=%0.3f\r\n"), Qavg0,Qavg1);
+        xprintf_P(PSTR("DEBUG: Qavg1=%0.3f\r\n"), Qavg1);
     }
-
+    
 }
 //------------------------------------------------------------------------------
-void counters_test_rb(char *data)
-{
+//void counters_test_rb(char *data)
+//{
     
     //guardo el data en el RB, lo promedio, imprimo el RB y el promedio
     
@@ -415,7 +443,7 @@ float avg;
     avg /= MAX_RB_CAUDAL_STORAGE_SIZE;
     xprintf_P(PSTR("DEBUG: AVG=%0.3f\r\n"), avg);
 */
-    
-}
+   
+//}
 
         

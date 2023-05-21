@@ -45,6 +45,8 @@ extern "C" {
 #define CNT_PARAMNAME_LENGTH	12
 #define NRO_COUNTER_CHANNELS     2
 
+#define MAX_RB_CAUDAL_STORAGE_SIZE  5
+    
 typedef enum { CAUDAL = 0, PULSOS } t_counter_modo;
 
 // Configuracion de canales de contadores
@@ -52,13 +54,14 @@ typedef struct {
 	char name[CNT_PARAMNAME_LENGTH];
 	float magpp;
     t_counter_modo modo_medida;
+    uint8_t rb_size;
 } counter_conf_t;
 
 
 void counters_init( counter_conf_t *counter_conf );
 void counters_config_defaults( counter_conf_t *counter_conf );
 void counters_config_print(counter_conf_t *counter_conf );
-bool counters_config_channel( uint8_t channel, counter_conf_t *counter_conf, char *s_name, char *s_magpp, char *s_modo );
+bool counters_config_channel( uint8_t channel, counter_conf_t *counter_conf, char *s_name, char *s_magpp, char *s_modo, char *s_rb_size );
 void counters_config_debug(bool debug );
 bool counters_read_debug(void);
 void counter_FSM(uint8_t i, counter_conf_t *counter_conf );
