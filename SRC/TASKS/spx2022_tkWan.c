@@ -256,7 +256,7 @@ static void wan_state_online_config(void)
     }
     wan_process_frame_configAinputs();
     wan_process_frame_configCounters();
-    wan_process_frame_configModbus();
+    //wan_process_frame_configModbus();
     save_config_in_NVM();    
     wan_state = WAN_ONLINE_DATA;
     
@@ -776,7 +776,12 @@ char *p;
     for(i=0; i<NRO_ANALOG_CHANNELS; i++) {
         memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
         j = 0;
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("[A%d:%s,"), i, systemConf.ainputs_conf[i].name );
+        if ( systemConf.ainputs_conf[i].enabled ) {
+            j += sprintf_P( (char *)&hash_buffer[j], PSTR("[A%d:TRUE,"), i );
+        } else {
+            j += sprintf_P( (char *)&hash_buffer[j], PSTR("[A%d:FALSE,"), i );
+        }
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%s,"), systemConf.ainputs_conf[i].name );
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d,%d,"), systemConf.ainputs_conf[i].imin, systemConf.ainputs_conf[i].imax );
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f,%.02f,"), systemConf.ainputs_conf[i].mmin, systemConf.ainputs_conf[i].mmax );
         j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f]"), systemConf.ainputs_conf[i].offset);    
@@ -784,7 +789,7 @@ char *p;
         while (*p != '\0') {
             hash = u_hash(hash, *p++);
         }
-        // xprintf_P(PSTR("HASH_AIN:<%s>, hash=%d\r\n"), hash_buffer, hash );
+        //xprintf_P(PSTR("HASH_AIN:<%s>, hash=%d\r\n"), hash_buffer, hash );
     }
  
     // Armo el buffer
@@ -838,7 +843,7 @@ static bool wan_process_rsp_configAinputs(void)
 {
    /*
      * Procesa la configuracion de los canales analogicos
-     * RXFRAME: <html><body><h1>CLASS=CONF_AINPUTS&A0=pA,4,20,0.0,10.0,0.0&A1=pB,4,20,0.0,10.0,0.0&A2=X,4,20,0.0,10.0,0.0</h1></body></html>
+     * RXFRAME: <html><body><h1>CLASS=CONF_AINPUTS&A0=true,pA,4,20,0.0,10.0,0.0&A1=true,pB,4,20,0.0,10.0,0.0&A2=false,X,4,20,0.0,10.0,0.0</h1></body></html>
      *                          CLASS=CONF_AINPUTS&CONFIG=OK
      */
     
@@ -846,6 +851,7 @@ char *ts = NULL;
 char localStr[32] = { 0 };
 char *stringp = NULL;
 char *tk_name= NULL;
+char *tk_enable= NULL;
 char *tk_iMin= NULL;
 char *tk_iMax = NULL;
 char *tk_mMin = NULL;
@@ -859,7 +865,7 @@ bool retS = false;
 
     p = lBchar_get_buffer(&wan_lbuffer);
     
-    if  ( strstr( p, "CONFIG:OK") != NULL ) {
+    if  ( strstr( p, "CONFIG=OK") != NULL ) {
         retS = true;
        goto exit_;
     }
@@ -875,6 +881,7 @@ bool retS = false;
 			strncpy( localStr, ts, sizeof(localStr));
 			stringp = localStr;
 			tk_name = strsep(&stringp,delim);		//A0
+            tk_enable = strsep(&stringp,delim);     // enable
 			tk_name = strsep(&stringp,delim);		//name
 			tk_iMin = strsep(&stringp,delim);		//iMin
 			tk_iMax = strsep(&stringp,delim);		//iMax
@@ -882,7 +889,7 @@ bool retS = false;
 			tk_mMax = strsep(&stringp,delim);		//mMax
 			tk_offset = strsep(&stringp,delim);		//offset
 
-			ainputs_config_channel( ch, systemConf.ainputs_conf, tk_name ,tk_iMin, tk_iMax, tk_mMin, tk_mMax, tk_offset );
+			ainputs_config_channel( ch, systemConf.ainputs_conf, tk_enable, tk_name , tk_iMin, tk_iMax, tk_mMin, tk_mMax, tk_offset );
 			xprintf_P( PSTR("WAN:: Reconfig A%d\r\n"), ch);
 		}
 	}
@@ -915,13 +922,28 @@ char *p;
 
         memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
         j = 0;
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("[C%d:%s,"), i, systemConf.counters_conf[i].name );
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.03f,%d,%d]"), systemConf.counters_conf[i].magpp, systemConf.counters_conf[i].modo_medida, systemConf.counters_conf[i].rb_size );
-            
+        if ( systemConf.ainputs_conf[i].enabled ) {
+            j += sprintf_P( (char *)&hash_buffer[j], PSTR("[C%d:TRUE,"), i );
+        } else {
+            j += sprintf_P( (char *)&hash_buffer[j], PSTR("[C%d:FALSE,"), i );
+        }
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%s,"), systemConf.counters_conf[i].name );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.03f,"), systemConf.counters_conf[i].magpp );
+        
+        if ( systemConf.counters_conf[i].modo_medida == 0 ) {
+            j += sprintf_P( (char *)&hash_buffer[j], PSTR("CAUDAL,"));
+        } else {
+            j += sprintf_P( (char *)&hash_buffer[j], PSTR("PULSOS,"));
+        }
+
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d]"), systemConf.counters_conf[i].rb_size );
+
+       
         p = (char *)hash_buffer;
         while (*p != '\0') {
             hash = u_hash(hash, *p++);
         }
+        
         //xprintf_P(PSTR("HASH_CNT:<%s>, hash=%d\r\n"),hash_buffer, hash );
     }
     
@@ -979,7 +1001,7 @@ static bool wan_process_rsp_configCounters(void)
 {
     /*
      * Procesa la configuracion de los canales contadores
-     * RXFRAME: <html><body><h1>CLASS=CONF_COUNTERS&C0=q0,0.01,CAUDAL,3&C1=X,0.0,CAUDAL,4</h1></body></html>
+     * RXFRAME: <html><body><h1>CLASS=CONF_COUNTERS&C0=TRUE,q0,0.01,CAUDAL,3&C1=FALSE,X,0.0,CAUDAL,4</h1></body></html>
      * 
      */
 
@@ -987,6 +1009,7 @@ char *ts = NULL;
 char localStr[32] = { 0 };
 char *stringp = NULL;
 char *tk_name = NULL;
+char *tk_enable= NULL;
 char *tk_magpp = NULL;
 char *tk_modo = NULL;
 char *tk_rbsize = NULL;
@@ -998,7 +1021,7 @@ bool retS = false;
 
     p = lBchar_get_buffer(&wan_lbuffer);
     
-    if  ( strstr( p, "CONFIG:OK") != NULL ) {
+    if  ( strstr( p, "CONFIG=OK") != NULL ) {
        retS = true;
        goto exit_;
     }
@@ -1013,14 +1036,15 @@ bool retS = false;
 			ts = strstr( p, str_base);
 			strncpy(localStr, ts, sizeof(localStr));
 			stringp = localStr;
-			tk_name = strsep(&stringp,delim);		//C0
+			tk_enable = strsep(&stringp,delim);		//C0
+            tk_enable = strsep(&stringp,delim);     //enable
 			tk_name = strsep(&stringp,delim);		//name
 			tk_magpp = strsep(&stringp,delim);		//magpp
-			tk_modo = strsep(&stringp,delim);
-            tk_rbsize = strsep(&stringp,delim);
+			tk_modo = strsep(&stringp,delim);       //modo
+            tk_rbsize = strsep(&stringp,delim);     //rbsize
 
-            //xprintf_P(PSTR("DEBUG: ch=%d, name=%s, magpp=%s, modo=%s\r\n"), ch, tk_name, tk_magpp, tk_modo);
-			counters_config_channel( ch ,systemConf.counters_conf, tk_name , tk_magpp, tk_modo, tk_rbsize );         
+            //xprintf_P(PSTR("DEBUG: ch=%d,enable=%s,name=%s magpp=%s,modo=%s,rbsize=%s\r\n"), ch, tk_enable, tk_name, tk_magpp, tk_modo, tk_rbsize);
+			counters_config_channel( ch , systemConf.counters_conf, tk_enable, tk_name , tk_magpp, tk_modo, tk_rbsize );         
 			xprintf_P( PSTR("WAN:: Reconfig C%d\r\n"), ch);
 		}
 	}
@@ -1046,10 +1070,9 @@ uint8_t timeout = 0;
 bool retS = false;
 uint8_t hash = 0;
 
-
     xprintf_P(PSTR("WAN:: CONFIG_MODBUS.\r\n"));
  
-    hash = modbus_hash( systemConf.modbus_conf, u_hash );
+    hash = modbus_hash( &systemConf.modbus_conf, u_hash );
     
     // Armo el buffer
     while ( xSemaphoreTake( sem_WAN, MSTOTAKEWANSEMPH ) != pdTRUE )
@@ -1102,22 +1125,29 @@ static bool wan_process_rsp_configModbus(void)
 {
    /*
      * Procesa la configuracion de los canales Modbus
-     * RXFRAME: <html><body><h1>CLASS:CONF_MODBUS;M0:CAU1,8,100,2,3,U16,C0123,0;M1:AUX,9,200,2,3,I16,C0123,0;M2:PRE,7,1021,2,3,FLOAT,C3210,1;
-     *                                            M3:BOM,6,1022,2,3,U16,C0123,0;M4:CAU2,5,1023,2,3,U16,C0123,0</h1></body></html>
+     * RXFRAME: <html><body><h1>CLASS=CONF_MODBUS&ENABLE=TRUE&LOCALADDR=2&
+     *                                             M0=TRUE,CAU1,8,100,2,3,U16,C0123,0&
+     *                                             M1=TRUE,AUX,9,200,2,3,I16,C0123,0&
+     *                                             M2=TRUE,PRE,7,1021,2,3,FLOAT,C3210,1&
+     *                                             M3=TRUE,BOM,6,1022,2,3,U16,C0123,0&
+     *                                             M4=TRUE,CAU2,5,1023,2,3,U16,C0123,0</h1></body></html>
      *                          CLASS:CONF_MODBUS;CONFIG:OK
      * 
+     * CLASS=CONF_MODBUS&ENABLE=TRUE&LOCALADDR=2&M0=TRUE,CAU0,2,2069,2,3,FLOAT,C1032,0&M1=FALSE,X,2,2069,2,3,FLOAT,C1032,0&
      */
 
     
 char *ts = NULL;
-char localStr[32] = { 0 };
+char localStr[48] = { 0 };
 char *stringp = NULL;
+char *tk_address = NULL;
+char *tk_enable= NULL;
 char *tk_name= NULL;
 char *tk_sla= NULL;
-char *tk_address = NULL;
-char *tk_size = NULL;
+char *tk_regaddr = NULL;
+char *tk_nroregs = NULL;
 char *tk_fcode = NULL;
-char *tk_type = NULL;
+char *tk_mtype = NULL;
 char *tk_codec = NULL;
 char *tk_pow10 = NULL;
 char *delim = "&,;:=><";
@@ -1128,12 +1158,35 @@ bool retS = false;
 
     p = lBchar_get_buffer(&wan_lbuffer);
     
-    if  ( strstr( p, "CONFIG:OK") != NULL ) {
+    if  ( strstr( p, "CONFIG=OK") != NULL ) {
         retS = true;
        goto exit_;
     }
 
-	// MB?
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "ENABLE=");
+    if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        tk_enable = strsep(&stringp,delim);	 	// ENABLE
+        tk_enable = strsep(&stringp,delim);	 	// TRUE/FALSE
+        modbus_config_enable( &systemConf.modbus_conf, tk_enable);
+        xprintf_P( PSTR("WAN:: Reconfig MODBUS ENABLE to %s\r\n"), tk_enable );
+    }
+
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "LOCALADDR=");
+    if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        tk_address = strsep(&stringp,delim);	 	// ENABLE
+        tk_address = strsep(&stringp,delim);	 	// TRUE/FALSE
+        modbus_config_localaddr( &systemConf.modbus_conf, tk_address);
+        xprintf_P( PSTR("WAN:: Reconfig MODBUS LOCALADDR to %s\r\n"), tk_address );
+    }
+    
+    //
+	// MB? M0=TRUE,CAU0,2,2069,2,3,FLOAT,C1032,0
 	for (ch=0; ch < NRO_MODBUS_CHANNELS; ch++ ) {
 		memset( &str_base, '\0', sizeof(str_base) );
 		snprintf_P( str_base, sizeof(str_base), PSTR("M%d"), ch );
@@ -1143,17 +1196,27 @@ bool retS = false;
             ts = strstr( p, str_base);
 			strncpy( localStr, ts, sizeof(localStr));
 			stringp = localStr;
-			tk_name = strsep(&stringp,delim);		//M0
+			tk_enable = strsep(&stringp,delim);	//M0
+            tk_enable = strsep(&stringp,delim);     //enable
 			tk_name = strsep(&stringp,delim);		//name
-			tk_sla = strsep(&stringp,delim);		//sla
-			tk_address = strsep(&stringp,delim);	//Address
-			tk_size = strsep(&stringp,delim);		//size
+			tk_sla = strsep(&stringp,delim);		//sla_address
+			tk_regaddr = strsep(&stringp,delim);	//reg_ddress
+			tk_nroregs = strsep(&stringp,delim);	//nro_regs
 			tk_fcode = strsep(&stringp,delim);		//fcode
-			tk_type = strsep(&stringp,delim);		//type
+			tk_mtype = strsep(&stringp,delim);		//mtype
 			tk_codec = strsep(&stringp,delim);		//codec
 			tk_pow10 = strsep(&stringp,delim);		//pow10
-
-			modbus_config_channel( ch, systemConf.modbus_conf, tk_name, tk_sla, tk_address, tk_size, tk_fcode, tk_type, tk_codec, tk_pow10 );
+                    
+			modbus_config_channel( ch, &systemConf.modbus_conf, 
+                    tk_enable, 
+                    tk_name, 
+                    tk_sla, 
+                    tk_regaddr, 
+                    tk_nroregs, 
+                    tk_fcode, 
+                    tk_mtype, 
+                    tk_codec, 
+                    tk_pow10 );
 			xprintf_P( PSTR("WAN:: Reconfig M%d\r\n"), ch);
 		}
 	}
@@ -1284,8 +1347,8 @@ int16_t fptr;
     
     // Modbus Channels:
     for ( channel=0; channel < NRO_MODBUS_CHANNELS; channel++) {
-        if ( strcmp ( systemConf.modbus_conf[channel].name, "X" ) != 0 ) {
-            fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.3f"), systemConf.modbus_conf[channel].name, dr->l_modbus[channel]);
+        if ( strcmp ( systemConf.modbus_conf.mbch[channel].name, "X" ) != 0 ) {
+            fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.3f"), systemConf.modbus_conf.mbch[channel].name, dr->l_modbus[channel]);
         }
     }
     

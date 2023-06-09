@@ -34,14 +34,22 @@ typedef enum { CODEC0123, CODEC1032, CODEC3210, CODEC2301 } t_modbus_codec;
  */
 
 typedef struct {
-	char name[MODBUS_PARAMNAME_LENGTH];
+    bool enabled;
+    char name[MODBUS_PARAMNAME_LENGTH];
+    uint8_t slave_address;		// Direccion del dispositivo en el bus.
+    uint16_t reg_address;		// Direccion de la posicion de memoria donde leer.
+    uint8_t nro_regs; 			// Cada registro son 2 bytes por lo que siempre leemos 2 x N.
+    uint8_t fcode;
 	t_modbus_types type;		// Indica si es entero con o sin signo, float, etc
 	t_modbus_codec codec;		// Indica el orden de los bytes en numeros de mas de 1 byte
-	uint8_t slave_address;		// Direccion del dispositivo en el bus.
-	uint16_t reg_address;		// Direccion de la posicion de memoria donde leer.
-	uint8_t nro_regs; 			// Cada registro son 2 bytes por lo que siempre leemos 2 x N.
 	uint8_t divisor_p10;		// factor de potencia de 10 por el que dividimos para tener la magnitud
-	uint8_t fcode;				// Codigo de la funcion con que se accede al registro.
+	
+} modbus_channel_conf_t;
+
+typedef struct {
+    bool enabled;
+    uint8_t localaddr;
+    modbus_channel_conf_t mbch[NRO_MODBUS_CHANNELS];
 } modbus_conf_t;
 
 /*
@@ -65,7 +73,7 @@ typedef union {
 
 
 typedef struct {
-	modbus_conf_t channel;
+	modbus_channel_conf_t channel;
 	uint8_t tx_buffer[MBUS_TXMSG_LENGTH];
 	uint8_t rx_buffer[MBUS_RXMSG_LENGTH];
 	uint8_t tx_size;		// Cantidad de bytes en el txbuffer para transmitir
@@ -82,7 +90,19 @@ void modbus_config_debug(bool debug );
 bool modbus_read_debug(void);
 void modbus_config_defaults(modbus_conf_t *modbus_conf);
 void modbus_print_configuration(modbus_conf_t *modbus_conf);
-bool modbus_config_channel( uint8_t channel, modbus_conf_t *modbus_conf, char *s_name,char *s_sla, char *s_addr, char *s_nro_recds,char *s_fcode,char *s_type,char *s_codec,char *s_divisor_p10 );
+bool modbus_config_channel( uint8_t channel, modbus_conf_t *modbus_conf, 
+        char *s_enable, 
+        char *s_name, 
+        char *s_sla, 
+        char *s_regaddr, 
+        char *s_nroregs,
+        char *s_fcode,
+        char *s_mtype,
+        char *s_codec,
+        char *s_pow10 );
+
+bool modbus_config_enable( modbus_conf_t *modbus_conf, char *s_enable);
+bool modbus_config_localaddr( modbus_conf_t *modbus_conf, char *s_localaddr);
 
 
 void modbus_txmit_ADU( mbus_CONTROL_BLOCK_t *mbus_cb );

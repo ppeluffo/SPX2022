@@ -24,7 +24,6 @@ typedef struct {
     float caudal;
 } t_caudal_s;
 
-
 t_caudal_s caudal_storage_0[MAX_RB_CAUDAL_STORAGE_SIZE];
 t_caudal_s caudal_storage_1[MAX_RB_CAUDAL_STORAGE_SIZE];
 rBstruct_s caudal_RB_0,caudal_RB_1;
@@ -97,6 +96,7 @@ uint8_t i = 0;
 	for ( i = 0; i < NRO_COUNTER_CHANNELS; i++ ) {
 		//snprintf_P( counters_conf[i].name, CNT_PARAMNAME_LENGTH, PSTR("X%d\0"),i );
         snprintf_P( counters_conf[i].name, CNT_PARAMNAME_LENGTH, PSTR("X") );
+        counters_conf[i].enabled = false;
 		counters_conf[i].magpp = 1;
         counters_conf[i].modo_medida = CAUDAL;
         counters_conf[i].rb_size = 1;
@@ -118,7 +118,13 @@ uint8_t i = 0;
     
 	for ( i = 0; i < NRO_COUNTER_CHANNELS; i++) {
         
-        xprintf_P( PSTR(" c%d: [%s,magpp=%.03f,"), i, counters_conf[i].name, counters_conf[i].magpp );
+        if ( counters_conf[i].enabled ) {
+            xprintf_P( PSTR(" c%d: +"),i);
+        } else {
+            xprintf_P( PSTR(" c%d: -"),i);
+        }
+                
+        xprintf_P( PSTR("[%s,magpp=%.03f,"),counters_conf[i].name, counters_conf[i].magpp );
         if ( counters_conf[i].modo_medida == CAUDAL ) {
             xprintf_P(PSTR("CAUDAL,"));
         } else {
@@ -126,12 +132,16 @@ uint8_t i = 0;
         }
         
         xprintf_P( PSTR("rbsize=%d]\r\n"), counters_conf[i].rb_size );
-	}
-
-            
+    }       
 }
 //------------------------------------------------------------------------------
-bool counters_config_channel( uint8_t channel, counter_conf_t *counters_conf, char *s_name, char *s_magpp, char *s_modo, char *s_rb_size )
+bool counters_config_channel( uint8_t channel, 
+            counter_conf_t *counters_conf, 
+        char *s_enable, 
+        char *s_name, 
+        char *s_magpp, 
+        char *s_modo, 
+        char *s_rb_size )
 {
 	// Configuro un canal contador.
 	// channel: id del canal
@@ -142,12 +152,22 @@ bool counters_config_channel( uint8_t channel, counter_conf_t *counters_conf, ch
 
 bool retS = false;
 
+    //xprintf_P(PSTR("DEBUG COUNTERS: en=%s,name=%s,magpp=%s,modo=%s,rbsize=%s\r\n"), s_enable,s_name,s_magpp,s_modo,s_rb_size  );
+
 	if ( s_name == NULL ) {
 		return(retS);
 	}
 
 	if ( ( channel >=  0) && ( channel < NRO_COUNTER_CHANNELS ) ) {
 
+        // Enable ?
+        if (!strcmp_P( strupr(s_enable), PSTR("TRUE"))  ) {
+            counters_conf[channel].enabled = true;
+        
+        } else if (!strcmp_P( strupr(s_enable), PSTR("FALSE"))  ) {
+            counters_conf[channel].enabled = false;
+        }
+        
 		// NOMBRE
 		snprintf_P( counters_conf[channel].name, CNT_PARAMNAME_LENGTH, PSTR("%s"), s_name );
 
@@ -164,6 +184,7 @@ bool retS = false;
 
 			} else {
 				xprintf_P(PSTR("ERROR: counters modo: PULSO/CAUDAL only!!\r\n"));
+                return (false);
 			}
 		}
         

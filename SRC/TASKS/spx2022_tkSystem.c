@@ -117,7 +117,7 @@ bool poll_data(dataRcd_s *dataRcd)
      * Lo hacemos aqui asi es una funcion que se puede invocar desde Cmd.
      */
 bool f_status;
-//uint8_t channel;
+uint8_t channel;
 float mag;
 uint16_t raw;
 bool retS = false;
@@ -130,18 +130,20 @@ bool retS = false;
   		vTaskDelay( ( TickType_t)( 1 ) );
         
     // ANALOG: Leo los 2 canales analogicos
-    /*
     for ( channel = 0; channel < ( NRO_ANALOG_CHANNELS - 1 ) ; channel++) {
-        ainputs_read_channel ( channel, systemConf.ainputs_conf, &mag, &raw );
-        systemVars.ainputs[channel] = mag;
+        if ( systemConf.ainputs_conf[channel].enabled ) {
+            ainputs_read_channel ( channel, systemConf.ainputs_conf, &mag, &raw );
+            systemVars.ainputs[channel] = mag;
+        }
     }
-     */
     
+    /*
     ainputs_read_channel ( 0, systemConf.ainputs_conf, &mag, &raw );
     systemVars.ainputs[0] = mag;
         
     ainputs_read_channel ( 1, systemConf.ainputs_conf, &mag, &raw );
     systemVars.ainputs[1] = mag;
+    */
     
     // Leo la bateria
     ainputs_read_channel ( 99, systemConf.ainputs_conf, &mag, &raw );
@@ -156,7 +158,7 @@ bool retS = false;
     counters_clear();
        
     // Leo los canales modbus 
-    modbus_read ( systemVars.modbus, systemConf.modbus_conf);
+    modbus_read ( systemVars.modbus, &systemConf.modbus_conf);
     
     // Armo el dr.
     memcpy(dataRcd->l_ainputs, systemVars.ainputs, sizeof(dataRcd->l_ainputs));

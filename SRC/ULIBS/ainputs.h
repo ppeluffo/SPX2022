@@ -28,6 +28,7 @@ extern "C" {
 #include "xprintf.h"
 #include "ina3221.h"    
 #include "pines.h"
+#include "utils.h"
     
 // Configuracion de canales analogicos
     
@@ -37,6 +38,7 @@ extern "C" {
 #define PWRSENSORES_SETTLETIME_MS   5000
 
 typedef struct {
+    bool enabled;
 	uint8_t imin;
 	uint8_t imax;
 	float mmin;
@@ -48,7 +50,7 @@ typedef struct {
 void ainputs_init(uint8_t samples_count);
 void ainputs_awake(void);
 void ainputs_sleep(void);
-bool ainputs_config_channel( uint8_t channel, ainputs_conf_t *ainputs_conf, char *s_aname,char *s_imin,char *s_imax,char *s_mmin,char *s_mmax,char *s_offset );
+bool ainputs_config_channel( uint8_t channel, ainputs_conf_t *ainputs_conf, char *s_enable, char *s_aname,char *s_imin,char *s_imax,char *s_mmin,char *s_mmax,char *s_offset );
 void ainputs_config_defaults(ainputs_conf_t *ainputs_conf);
 void ainputs_print_configuration(ainputs_conf_t *ainputs_conf);
 uint16_t ainputs_read_channel_raw(uint8_t channel );

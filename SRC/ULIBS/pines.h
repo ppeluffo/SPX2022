@@ -88,7 +88,69 @@ void VSENSORS420_init(void);
 #define SET_RTS_RS485B()        ( RTS_RS485B_PORT.OUT |= RTS_RS485B_PIN_bm )
 #define CLEAR_RTS_RS485B()      ( RTS_RS485B_PORT.OUT &= ~RTS_RS485B_PIN_bm )
 
-#define CONFIG_RTS_485B()       RTS_RS485B_PORT.DIR |= RTS_RS485B_PIN_bm;
+#define CONFIG_RTS_485B()       RTS_RS485B_PORT.DIR |= RTS_RS485B_PIN_bm
+
+// DRV8814:
+#define DRV8814_RESET_PORT      PORTA      
+#define DRV8814_RESET           6
+#define DRV8814_RESET_PIN_bm    PIN6_bm
+#define DRV8814_RESET_PIN_bp    PIN6_bp
+#define SET_DRV8814_RESET       ( DRV8814_RESET_PORT.OUT |= DRV8814_RESET_PIN_bm )
+#define CLEAR_DRV8814_RESET     ( DRV8814_RESET_PORT.OUT &= ~DRV8814_RESET_PIN_bm )
+#define CONFIG_DRV8814_RESET    ( DRV8814_RESET_PORT.DIR |= DRV8814_RESET_PIN_bm )
+
+#define DRV8814_SLEEP_PORT      PORTA     
+#define DRV8814_SLEEP           7
+#define DRV8814_SLEEP_PIN_bm    PIN7_bm
+#define DRV8814_SLEEP_PIN_bp    PIN7_bp
+#define SET_DRV8814_SLEEP       ( DRV8814_SLEEP_PORT.OUT |= DRV8814_SLEEP_PIN_bm )
+#define CLEAR_DRV8814_SLEEP     ( DRV8814_SLEEP_PORT.OUT &= ~DRV8814_SLEEP_PIN_bm )
+#define CONFIG_DRV8814_SLEEP    ( DRV8814_SLEEP_PORT.DIR |= DRV8814_SLEEP_PIN_bm )
+
+#define DRV8814_AEN_PORT      PORTB      
+#define DRV8814_AEN           4
+#define DRV8814_AEN_PIN_bm    PIN4_bm
+#define DRV8814_AEN_PIN_bp    PIN4_bp
+#define SET_DRV8814_AEN       ( DRV8814_AEN_PORT.OUT |= DRV8814_AEN_PIN_bm )
+#define CLEAR_DRV8814_AEN     ( DRV8814_AEN_PORT.OUT &= ~DRV8814_AEN_PIN_bm )
+#define CONFIG_DRV8814_AEN    ( DRV8814_AEN_PORT.DIR |= DRV8814_AEN_PIN_bm )
+
+#define DRV8814_BEN_PORT      PORTB      
+#define DRV8814_BEN           5
+#define DRV8814_BEN_PIN_bm    PIN5_bm
+#define DRV8814_BEN_PIN_bp    PIN5_bp
+#define SET_DRV8814_BEN       ( DRV8814_BEN_PORT.OUT |= DRV8814_BEN_PIN_bm )
+#define CLEAR_DRV8814_BEN     ( DRV8814_BEN_PORT.OUT &= ~DRV8814_BEN_PIN_bm )
+#define CONFIG_DRV8814_BEN    ( DRV8814_BEN_PORT.DIR |= DRV8814_BEN_PIN_bm )
+
+#define DRV8814_APH_PORT      PORTB      
+#define DRV8814_APH           0
+#define DRV8814_APH_PIN_bm    PIN0_bm
+#define DRV8814_APH_PIN_bp    PIN0_bp
+#define SET_DRV8814_APH       ( DRV8814_APH_PORT.OUT |= DRV8814_APH_PIN_bm )
+#define CLEAR_DRV8814_APH     ( DRV8814_APH_PORT.OUT &= ~DRV8814_APH_PIN_bm )
+#define CONFIG_DRV8814_APH    ( DRV8814_APH_PORT.DIR |= DRV8814_APH_PIN_bm )
+
+#define DRV8814_BPH_PORT      PORTB      
+#define DRV8814_BPH           1
+#define DRV8814_BPH_PIN_bm    PIN1_bm
+#define DRV8814_BPH_PIN_bp    PIN1_bp
+#define SET_DRV8814_BPH       ( DRV8814_BPH_PORT.OUT |= DRV8814_BPH_PIN_bm )
+#define CLEAR_DRV8814_BPH     ( DRV8814_BPH_PORT.OUT &= ~DRV8814_BPH_PIN_bm )
+#define CONFIG_DRV8814_BPH    ( DRV8814_BPH_PORT.DIR |= DRV8814_BPH_PIN_bm )
+
+// Los pines de FinCarrera son entradas
+#define FC1_PORT      PORTB    
+#define FC1           7
+#define FC1_PIN_bm    PIN7_bm
+#define FC1_PIN_bp    PIN7_bp
+#define CONFIG_FC1    ( FC1_PORT.DIR &= ~FC1_PIN_bm )
+
+#define FC2_PORT      PORTB     
+#define FC2           6
+#define FC2_PIN_bm    PIN6_bm
+#define FC2_PIN_bp    PIN6_bp
+#define CONFIG_FC2    ( FC2_PORT.DIR &= ~FC2_PIN_bm )
 
 
 #ifdef	__cplusplus

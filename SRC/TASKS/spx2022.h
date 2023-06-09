@@ -85,9 +85,14 @@ extern "C" {
 #include "counters.h"
 #include "ainputs.h"
 #include "modbus.h"
+#include "drv8814.h"
+#include "steppers.h"
+#include "valves.h"
+#include "piloto.h"
 
-#define FW_REV "1.0.9"
-#define FW_DATE "@ 20230519"
+
+#define FW_REV "1.1.0"
+#define FW_DATE "@ 20230609"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR3"
@@ -100,6 +105,7 @@ extern "C" {
 #define tkRS485A_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
 #define tkRS485B_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
 #define tkWAN_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
+#define tkPILOTO_TASK_PRIORITY 	( tskIDLE_PRIORITY + 1 )
 
 #define tkCtl_STACK_SIZE		384
 #define tkCmd_STACK_SIZE		384
@@ -107,6 +113,7 @@ extern "C" {
 #define tkRS485A_STACK_SIZE		384
 #define tkRS485B_STACK_SIZE		384
 #define tkWAN_STACK_SIZE		384
+#define tkPILOTO_STACK_SIZE		384
 
 StaticTask_t tkCtl_Buffer_Ptr;
 StackType_t tkCtl_Buffer [tkCtl_STACK_SIZE];
@@ -126,11 +133,14 @@ StackType_t tkRS485B_Buffer [tkRS485B_STACK_SIZE];
 StaticTask_t tkWAN_Buffer_Ptr;
 StackType_t tkWAN_Buffer [tkWAN_STACK_SIZE];
 
+StaticTask_t tkPILOTO_Buffer_Ptr;
+StackType_t tkPILOTO_Buffer [tkPILOTO_STACK_SIZE];
+
 SemaphoreHandle_t sem_SYSVars;
 StaticSemaphore_t SYSVARS_xMutexBuffer;
 #define MSTOTAKESYSVARSSEMPH ((  TickType_t ) 10 )
 
-TaskHandle_t xHandle_tkCtl, xHandle_tkCmd, xHandle_tkSys, xHandle_tkRS485A, xHandle_tkRS485B, xHandle_tkWAN;
+TaskHandle_t xHandle_tkCtl, xHandle_tkCmd, xHandle_tkSys, xHandle_tkRS485A, xHandle_tkRS485B, xHandle_tkWAN, xHandle_tkPILOTO;
 
 void tkCtl(void * pvParameters);
 void tkCmd(void * pvParameters);
@@ -138,6 +148,7 @@ void tkSystem(void * pvParameters);
 void tkRS485A(void * pvParameters);
 void tkRS485B(void * pvParameters);
 void tkWAN(void * pvParameters);
+void tkPiloto(void * pvParameters);
 
 void system_init();
 void reset(void);
@@ -231,7 +242,8 @@ struct {
     counter_conf_t counters_conf[NRO_COUNTER_CHANNELS];
     uint8_t samples_count;      // Nro. de muestras para promediar una medida
     uint8_t alarm_level;        // Nivel de variacion de medidas para transmitir.
-    modbus_conf_t modbus_conf[NRO_MODBUS_CHANNELS];
+    modbus_conf_t modbus_conf;
+    piloto_conf_t piloto_conf;
     
     // El checksum SIEMPRE debe ser el ultimo byte !!!!!
     uint8_t checksum;
@@ -249,8 +261,9 @@ uint8_t sys_watchdog;
 #define XCMA_WDG_bp   2
 #define XCMB_WDG_bp   3
 #define XWAN_WDG_bp   4
+#define PLT_WDG_bp    5
 
-#define WDG_bm 0x1F
+#define WDG_bm 0x3F
 
 #define WDG_INIT() ( sys_watchdog = WDG_bm )
 

@@ -81,7 +81,7 @@ void ainputs_sleep(void)
     INA_sleep();
 }
 //------------------------------------------------------------------------------
-bool ainputs_config_channel( uint8_t channel, ainputs_conf_t *ainputs_conf, char *s_aname,char *s_imin,char *s_imax,char *s_mmin,char *s_mmax,char *s_offset )
+bool ainputs_config_channel( uint8_t channel, ainputs_conf_t *ainputs_conf, char *s_enable, char *s_aname,char *s_imin,char *s_imax,char *s_mmin,char *s_mmax,char *s_offset )
 {
 
 	/*
@@ -97,24 +97,25 @@ bool retS = false;
 
 	if ( ( channel >=  0) && ( channel < NRO_ANALOG_CHANNELS ) ) {
 
-		snprintf_P( ainputs_conf[channel].name, AIN_PARAMNAME_LENGTH, PSTR("%s\0"), s_aname );
+        // Enable ?
+        if (!strcmp_P( strupr(s_enable), PSTR("TRUE"))  ) {
+            ainputs_conf[channel].enabled = true;
+        } else if (!strcmp_P( strupr(s_enable), PSTR("FALSE"))  ) {
+            ainputs_conf[channel].enabled = false;
+        }
+        
+        snprintf_P( ainputs_conf[channel].name, AIN_PARAMNAME_LENGTH, PSTR("%s"), s_aname );
 
 		if ( s_imin != NULL ) {
-			if ( ainputs_conf[channel].imin != atoi(s_imin) ) {
-				ainputs_conf[channel].imin = atoi(s_imin);
-			}
+			ainputs_conf[channel].imin = atoi(s_imin);
 		}
 
 		if ( s_imax != NULL ) {
-			if ( ainputs_conf[channel].imax != atoi(s_imax) ) {
-				ainputs_conf[channel].imax = atoi(s_imax);
-			}
+			ainputs_conf[channel].imax = atoi(s_imax);
 		}
 
 		if ( s_offset != NULL ) {
-			if ( ainputs_conf[channel].offset != atof(s_offset) ) {
-				ainputs_conf[channel].offset = atof(s_offset);
-			}
+			ainputs_conf[channel].offset = atof(s_offset);
 		}
 
 		if ( s_mmin != NULL ) {
@@ -140,12 +141,12 @@ void ainputs_config_defaults(ainputs_conf_t *ainputs_conf)
 uint8_t channel = 0;
 
 	for ( channel = 0; channel < NRO_ANALOG_CHANNELS; channel++) {
+        ainputs_conf[channel].enabled = false;
 		ainputs_conf[channel].imin = 0;
 		ainputs_conf[channel].imax = 20;
 		ainputs_conf[channel].mmin = 0.0;
 		ainputs_conf[channel].mmax = 10.0;
 		ainputs_conf[channel].offset = 0.0;
-        snprintf_P( ainputs_conf[channel].name, AIN_PARAMNAME_LENGTH, PSTR("X%d\0"),channel );
 		snprintf_P( ainputs_conf[channel].name, AIN_PARAMNAME_LENGTH, PSTR("X") );
 	}
 
@@ -167,16 +168,22 @@ uint8_t channel = 0;
     f_debug_ainputs ? xprintf_P(PSTR("true\r\n")) : xprintf_P(PSTR("false\r\n"));
 
 	for ( channel = 0; channel < NRO_ANALOG_CHANNELS; channel++) {
-		xprintf_P( PSTR(" a%d: [%d-%d mA/ %.02f,%.02f | %.03f | %s]\r\n"),
-			channel,
-			ainputs_conf[channel].imin,
-			ainputs_conf[channel].imax,
-			ainputs_conf[channel].mmin,
-			ainputs_conf[channel].mmax,
-			ainputs_conf[channel].offset,
-			ainputs_conf[channel].name );
-	}
-
+        
+        if ( ainputs_conf[channel].enabled ) {
+            xprintf_P( PSTR(" a%d: +"),channel);
+        } else {
+            xprintf_P( PSTR(" a%d: -"),channel);
+        }
+        
+        xprintf_P( PSTR("[%s, %d-%d mA/ %.02f,%.02f | %.03f]\r\n"),
+            ainputs_conf[channel].name,
+            ainputs_conf[channel].imin,
+            ainputs_conf[channel].imax,
+            ainputs_conf[channel].mmin,
+            ainputs_conf[channel].mmax,
+            ainputs_conf[channel].offset
+            );
+    }
 }
 //------------------------------------------------------------------------------
 uint16_t ainputs_read_channel_raw(uint8_t channel )
@@ -435,3 +442,33 @@ bool ainputs_read_debug(void)
     return (f_debug_ainputs);
 }
 //------------------------------------------------------------------------------
+uint8_t ainputs_hash( ainputs_conf_t *ainputs_conf )
+{
+    
+uint8_t hash_buffer[32];
+uint8_t i,j;
+uint8_t hash = 0;
+char *p;
+
+    // Calculo el hash de la configuracion de las ainputs
+    for(i=0; i<NRO_ANALOG_CHANNELS; i++) {
+        memset(hash_buffer, '\0', sizeof(hash_buffer));
+        j = 0;
+        if ( ainputs_conf[i].enabled ) {
+            j += sprintf_P( (char *)&hash_buffer[j], PSTR("[A%d:TRUE,"), i );
+        } else {
+            j += sprintf_P( (char *)&hash_buffer[j], PSTR("[A%d:FALSE,"), i );
+        }
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%s,"), ainputs_conf[i].name );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d,%d,"), ainputs_conf[i].imin, ainputs_conf[i].imax );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f,%.02f,"), ainputs_conf[i].mmin, ainputs_conf[i].mmax );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f]"), ainputs_conf[i].offset);    
+        p = (char *)hash_buffer;
+        while (*p != '\0') {
+            hash = u_hash(hash, *p++);
+        }
+        // xprintf_P(PSTR("HASH_AIN:<%s>, hash=%d\r\n"), hash_buffer, hash );
+    }
+    return(hash);
+    
+}
