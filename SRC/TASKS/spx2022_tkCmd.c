@@ -2,7 +2,6 @@
 #include "spx2022.h"
 #include "frtos_cmd.h"
 
-
 static void cmdClsFunction(void);
 static void cmdHelpFunction(void);
 static void cmdResetFunction(void);
@@ -103,7 +102,8 @@ dataRcd_s dr;
 
 
     if (!strcmp_P( strupr(argv[1]), PSTR("MBUSHASH"))  ) {
-        //test_wan_modbus();
+        modbus_hash( u_hash );
+        //utest_modbus_hash();
         return;
     }
 
@@ -251,12 +251,15 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  rs485a {string}, rs485b {string}\r\n"));
         xprintf_P( PSTR("  mbustest genpoll {slaaddr,regaddr,nro_regs,fcode,type,codec}\r\n"));
         xprintf_P( PSTR("           chpoll {ch}\r\n"));
+#ifdef PILOTO
+        xprintf_P( PSTR("  piloto {pres}\r\n"));
+#endif
         
     }  else if ( !strcmp_P( strupr(argv[1]), PSTR("READ"))) {
 		xprintf_P( PSTR("-read:\r\n"));
         xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos} {lenght} {debug}\r\n"));
         xprintf_P( PSTR("  avrid,rtc {long,short}\r\n"));
-        xprintf_P( PSTR("  cnt {0,1}\r\n"));
+        xprintf_P( PSTR("  cnt {0,1}, fc1,fc2\r\n"));
         xprintf_P( PSTR("  ina {conf|chXshv|chXbusv|mfid|dieid}\r\n"));
         xprintf_P( PSTR("  rs485a, rs485b\r\n"));
         xprintf_P( PSTR("  ainput {n}\r\n"));
@@ -270,7 +273,7 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("  comms {rs485, nbiot}\r\n"));
         xprintf_P( PSTR("  timerpoll, timerdial, samples {1..10}, almlevel {0..100}\r\n"));
         xprintf_P( PSTR("  pwrmodo {continuo,discreto,mixto}, pwron {hhmm}, pwroff {hhmm}\r\n"));
-        xprintf_P( PSTR("  debug {analog,counters,comms,modbus,none} {true/false}\r\n"));
+        xprintf_P( PSTR("  debug {analog,counters,comms,modbus,piloto,none} {true/false}\r\n"));
         xprintf_P( PSTR("  ainput {0..%d} enable{true/false} aname imin imax mmin mmax offset\r\n"),( NRO_ANALOG_CHANNELS - 1 ) );
         xprintf_P( PSTR("  counter {0..%d} enable{true/false} cname magPP modo(PULSO/CAUDAL),rbsize\r\n"), ( NRO_COUNTER_CHANNELS - 1 ) );
         xprintf_P( PSTR("  modbus enable{true/false}, localaddr {addr}\r\n"));
@@ -279,9 +282,11 @@ static void cmdHelpFunction(void)
         xprintf_P( PSTR("         fcode=>{3,6,16}\r\n"));
 		xprintf_P( PSTR("         type=>{i16,u16,i32,u32,float}\r\n"));
 		xprintf_P( PSTR("         codec=>{c0123,c1032,c3210,c2301}\r\n"));
+        
+#ifdef PILOTO
         xprintf_P( PSTR("  piloto enable{true/false},ppr {nn},pwidth {nn}\r\n"));
         xprintf_P( PSTR("         slot {idx} {hhmm} {pout}\r\n"));
-                    
+#endif    
     	// HELP RESET
 	} else if (!strcmp_P( strupr(argv[1]), PSTR("RESET"))) {
 		xprintf_P( PSTR("-reset\r\n"));
@@ -291,11 +296,14 @@ static void cmdHelpFunction(void)
     } else if (!strcmp_P( strupr(argv[1]), PSTR("TEST"))) {
 		xprintf_P( PSTR("-test\r\n"));
         xprintf_P( PSTR("  kill {wan,sys}\r\n"));
+        
+#ifdef PILOTO
         xprintf_P( PSTR("  drv8814 {SLEEP,RESET,AENA,BENA,APH,BPH},{SET,CLEAR}\r\n"));
         xprintf_P( PSTR("  drv8814 {FC1,FC2}, GET\r\n"));
         xprintf_P( PSTR("  stepper move {FW,REV},npulses,dtime,ptime\r\n"));
         xprintf_P( PSTR("          awake,sleep,pha01,pha10,phb01,phb10\r\n"));
         xprintf_P( PSTR("  valve {A,B} {open,close}\r\n"));
+#endif
         return;
         
     }  else {
@@ -325,6 +333,16 @@ static void cmdReadFunction(void)
 		return;
 	}
     
+    if (! strcmp_P( strupr(argv[1]), PSTR("FC1") ) ) {
+        xprintf_P(PSTR("FC1=%d\r\n"), FC1_read() );
+        return;
+    }
+    
+    if (! strcmp_P( strupr(argv[1]), PSTR("FC2") ) ) {
+        xprintf_P(PSTR("FC2=%d\r\n"), FC2_read() );
+        return;
+    }
+    
     // MEMORY
 	// read memory
 	if (!strcmp_P( strupr(argv[1]), PSTR("MEMORY\0"))  ) {
@@ -335,7 +353,7 @@ static void cmdReadFunction(void)
     // AINPUT
     // read ainput {n}
 	if (!strcmp_P( strupr(argv[1]), PSTR("AINPUT"))  ) {
-        ainputs_test_read_channel( atoi(argv[2]), systemConf.ainputs_conf ) ? pv_snprintfP_OK(): pv_snprintfP_ERR();
+        ainputs_test_read_channel( atoi(argv[2]) ) ? pv_snprintfP_OK(): pv_snprintfP_ERR();
 		return;
 	}
     
@@ -480,10 +498,13 @@ fat_s l_fat;
     print_pwr_configuration();
     
     WAN_print_configuration();
-    ainputs_print_configuration( systemConf.ainputs_conf);
-    counters_config_print( systemConf.counters_conf);
-    modbus_print_configuration( &systemConf.modbus_conf);
-    piloto_print_configuration( &systemConf.piloto_conf);
+    ainputs_print_configuration();
+    counters_print_configuration();
+    modbus_print_configuration();
+    
+#ifdef PILOTO
+    piloto_print_configuration();
+#endif
     
     xprintf_P(PSTR("Values:\r\n"));
     xprintf_P(PSTR(" Rele: %d\r\n"), systemVars.rele_output);
@@ -495,7 +516,16 @@ fat_s l_fat;
 static void cmdWriteFunction(void)
 {
 
-    FRTOS_CMD_makeArgv(); 
+    FRTOS_CMD_makeArgv();
+    
+    // PILOTO
+    // write piloto {pres}
+#ifdef PILOTO
+	if ( strcmp_P( strupr(argv[1]), PSTR("PILOTO")) == 0 ) {
+		piloto_cmd_set_presion(argv[2]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+		return;
+	}  
+#endif
     
     // MODBUS
 	// mbustest genpoll {type(F|I} sla fcode addr length }\r\n\0"));
@@ -650,31 +680,33 @@ bool retS = false;
     
     FRTOS_CMD_makeArgv();
 
+#ifdef PILOTO
     // PILOTO:
     if ( strcmp_P ( strupr( argv[1]), PSTR("PILOTO")) == 0 ) {
         // enable { true/false}
         if ( strcmp_P ( strupr( argv[2]), PSTR("ENABLE")) == 0 ) {
-            piloto_config_enable(&systemConf.piloto_conf, argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+            piloto_config_enable(argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
             return;
         }
         // ppr {nn}
         if ( strcmp_P ( strupr( argv[2]), PSTR("PPR")) == 0 ) {
-            piloto_config_pulseXrev(&systemConf.piloto_conf, argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+            piloto_config_pulseXrev(argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
             return;
         } 
         // pwidth {nn}
         if ( strcmp_P ( strupr( argv[2]), PSTR("PWIDTH")) == 0 ) {
-            piloto_config_pwidth(&systemConf.piloto_conf, argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+            piloto_config_pwidth(argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
             return;
         } 
         // slot {idx} {hhmm} {pout}
         if ( strcmp_P ( strupr( argv[2]), PSTR("SLOT")) == 0 ) {
-            piloto_config_slot(&systemConf.piloto_conf, argv[3], argv[4], argv[5]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+            piloto_config_slot( atoi(argv[3]), argv[4], argv[5]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
             return;
         }         
         pv_snprintfP_ERR();
         return;
     }
+#endif
     
     // MODBUS:
     // config modbus {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10
@@ -683,19 +715,19 @@ bool retS = false;
         
         //  enable{true/false}
         if ( strcmp_P ( strupr( argv[2]), PSTR("ENABLE")) == 0 ) {
-            modbus_config_enable (&systemConf.modbus_conf, argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+            modbus_config_enable (argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
             return;
         }
 
         // localaddr 
         if ( strcmp_P ( strupr( argv[2]), PSTR("LOCALADDR")) == 0 ) {
-            modbus_config_localaddr (&systemConf.modbus_conf, argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
+            modbus_config_localaddr (argv[3]) ? pv_snprintfP_OK() : pv_snprintfP_ERR();
             return;
         }
 
         // channel {0..%d} name slaaddr regaddr nro_recds fcode type codec div_p10
         if ( strcmp_P ( strupr( argv[2]), PSTR("CHANNEL")) == 0 ) {
-            retS = modbus_config_channel( atoi(argv[3]), &systemConf.modbus_conf, argv[4], argv[5], argv[6], argv[7], argv[8],argv[9],argv[10], argv[11],argv[12] );
+            retS = modbus_config_channel( atoi(argv[3]), argv[4], argv[5], argv[6], argv[7], argv[8],argv[9],argv[10], argv[11],argv[12] );
             retS ? pv_snprintfP_OK() : pv_snprintfP_ERR();
             return;
         }
@@ -765,6 +797,11 @@ bool retS = false;
 	// SAVE
 	// config save
 	if (!strcmp_P( strupr(argv[1]), PSTR("SAVE"))) {
+        ainputs_read_local_config(&systemConf.ainputs_conf);
+        counters_read_local_config(&systemConf.counters_conf);
+        modbus_read_local_config(&systemConf.modbus_conf);
+        piloto_read_local_config(&systemConf.piloto_conf);
+        
 		save_config_in_NVM();
 		pv_snprintfP_OK();
 		return;
@@ -795,7 +832,7 @@ bool retS = false;
     // AINPUT
 	// ainput {0..%d} enable aname imin imax mmin mmax offset
 	if (!strcmp_P( strupr(argv[1]), PSTR("AINPUT")) ) {
-		ainputs_config_channel ( atoi(argv[2]), systemConf.ainputs_conf, argv[3], argv[4], argv[5], argv[6], argv[7], argv[8], argv[9]);
+		ainputs_config_channel ( atoi(argv[2]), argv[3], argv[4], argv[5], argv[6], argv[7], argv[8], argv[9]);
         pv_snprintfP_OK();
 		return;
 	}
@@ -803,7 +840,7 @@ bool retS = false;
     // COUNTER
     // counter {0..%d} enable cname magPP modo(PULSO/CAUDAL),rbsize
 	if (!strcmp_P( strupr(argv[1]), PSTR("COUNTER")) ) {
-        counters_config_channel( atoi(argv[2]), systemConf.counters_conf, argv[3], argv[4], argv[5], argv[6], argv[7]  );
+        counters_config_channel( atoi(argv[2]), argv[3], argv[4], argv[5], argv[6], argv[7]  );
         pv_snprintfP_OK();
 		return;
 	}
@@ -842,7 +879,7 @@ static bool pv_cmd_modbus(void)
     
     // modbus chpoll {ch}
 	if ( strcmp_P( strupr(argv[2]), PSTR("CHPOLL")) == 0 ) {
-		modbus_test_channel(argv[3], &systemConf.modbus_conf );
+		modbus_test_channel(argv[3] );
 		return(true);
 	}
 

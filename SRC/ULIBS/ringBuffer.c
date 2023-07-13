@@ -96,7 +96,8 @@ void *p;
 	p += sizeof(uint8_t)*( rB->tail * rB->elementsize);
 
 	memcpy( element, p, rB->elementsize );
-	--rB->count;
+	
+    --rB->count;
 	// Avanzo en modo circular
 	rB->tail = ( rB->tail  + 1 ) % ( rB->length );
 	ret = true;

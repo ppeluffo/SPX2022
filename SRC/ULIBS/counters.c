@@ -28,10 +28,23 @@ t_caudal_s caudal_storage_0[MAX_RB_CAUDAL_STORAGE_SIZE];
 t_caudal_s caudal_storage_1[MAX_RB_CAUDAL_STORAGE_SIZE];
 rBstruct_s caudal_RB_0,caudal_RB_1;
 
-void promediar_rb_caudal(counter_conf_t *counters_conf);
+// Configuracion local del sistema de contadores
+counters_conf_t counters_conf;
+
+void promediar_rb_caudal(void);
 
 // -----------------------------------------------------------------------------
-void counters_init( counter_conf_t *counters_conf )
+void counters_update_local_config( counters_conf_t *counters_system_conf)
+{
+    memcpy( counters_system_conf, &counters_conf, sizeof(counters_conf_t));
+}
+// -----------------------------------------------------------------------------
+void counters_read_local_config( counters_conf_t *counters_system_conf)
+{
+    memcpy( &counters_conf, counters_system_conf, sizeof(counters_conf_t)); 
+}
+// -----------------------------------------------------------------------------
+void counters_init( void )
 {
     /*
      * Agrego rb_size para que el tamaño de los buffers sea ajustable
@@ -59,7 +72,7 @@ uint8_t i;
         &caudal_RB_0, 
         &caudal_storage_0, 
         //MAX_RB_CAUDAL_STORAGE_SIZE, 
-        counters_conf[0].rb_size,
+        counters_conf.channel[0].rb_size,
         sizeof(t_caudal_s), 
         true  
     );
@@ -69,7 +82,7 @@ uint8_t i;
         &caudal_RB_1, 
         &caudal_storage_1, 
         //MAX_RB_CAUDAL_STORAGE_SIZE, 
-        counters_conf[1].rb_size,
+        counters_conf.channel[1].rb_size,
         sizeof(t_caudal_s), 
         true  
     );
@@ -85,7 +98,7 @@ uint8_t CNT1_read(void)
     return ( ( CNT1_PORT.IN & CNT1_PIN_bm ) >> CNT1_PIN) ;
 }
 // -----------------------------------------------------------------------------
-void counters_config_defaults( counter_conf_t *counters_conf )
+void counters_config_defaults( void )
 {
     /*
      * Realiza la configuracion por defecto de los canales digitales.
@@ -95,15 +108,15 @@ uint8_t i = 0;
 
 	for ( i = 0; i < NRO_COUNTER_CHANNELS; i++ ) {
 		//snprintf_P( counters_conf[i].name, CNT_PARAMNAME_LENGTH, PSTR("X%d\0"),i );
-        snprintf_P( counters_conf[i].name, CNT_PARAMNAME_LENGTH, PSTR("X") );
-        counters_conf[i].enabled = false;
-		counters_conf[i].magpp = 1;
-        counters_conf[i].modo_medida = CAUDAL;
-        counters_conf[i].rb_size = 1;
+        snprintf_P( counters_conf.channel[i].name, CNT_PARAMNAME_LENGTH, PSTR("X") );
+        counters_conf.channel[i].enabled = false;
+		counters_conf.channel[i].magpp = 1;
+        counters_conf.channel[i].modo_medida = CAUDAL;
+        counters_conf.channel[i].rb_size = 1;
 	}
 }
 //------------------------------------------------------------------------------
-void counters_config_print( counter_conf_t *counters_conf )
+void counters_print_configuration( void )
 {
     /*
      * Muestra la configuracion de todos los canales de contadores en la terminal
@@ -118,30 +131,24 @@ uint8_t i = 0;
     
 	for ( i = 0; i < NRO_COUNTER_CHANNELS; i++) {
         
-        if ( counters_conf[i].enabled ) {
+        if ( counters_conf.channel[i].enabled ) {
             xprintf_P( PSTR(" c%d: +"),i);
         } else {
             xprintf_P( PSTR(" c%d: -"),i);
         }
                 
-        xprintf_P( PSTR("[%s,magpp=%.03f,"),counters_conf[i].name, counters_conf[i].magpp );
-        if ( counters_conf[i].modo_medida == CAUDAL ) {
+        xprintf_P( PSTR("[%s,magpp=%.03f,"),counters_conf.channel[i].name, counters_conf.channel[i].magpp );
+        if ( counters_conf.channel[i].modo_medida == CAUDAL ) {
             xprintf_P(PSTR("CAUDAL,"));
         } else {
             xprintf_P(PSTR("PULSO,"));
         }
         
-        xprintf_P( PSTR("rbsize=%d]\r\n"), counters_conf[i].rb_size );
+        xprintf_P( PSTR("rbsize=%d]\r\n"), counters_conf.channel[i].rb_size );
     }       
 }
 //------------------------------------------------------------------------------
-bool counters_config_channel( uint8_t channel, 
-            counter_conf_t *counters_conf, 
-        char *s_enable, 
-        char *s_name, 
-        char *s_magpp, 
-        char *s_modo, 
-        char *s_rb_size )
+bool counters_config_channel( uint8_t ch, char *s_enable, char *s_name, char *s_magpp, char *s_modo, char *s_rb_size )
 {
 	// Configuro un canal contador.
 	// channel: id del canal
@@ -158,29 +165,29 @@ bool retS = false;
 		return(retS);
 	}
 
-	if ( ( channel >=  0) && ( channel < NRO_COUNTER_CHANNELS ) ) {
+	if ( ( ch >=  0) && ( ch < NRO_COUNTER_CHANNELS ) ) {
 
         // Enable ?
         if (!strcmp_P( strupr(s_enable), PSTR("TRUE"))  ) {
-            counters_conf[channel].enabled = true;
+            counters_conf.channel[ch].enabled = true;
         
         } else if (!strcmp_P( strupr(s_enable), PSTR("FALSE"))  ) {
-            counters_conf[channel].enabled = false;
+            counters_conf.channel[ch].enabled = false;
         }
         
 		// NOMBRE
-		snprintf_P( counters_conf[channel].name, CNT_PARAMNAME_LENGTH, PSTR("%s"), s_name );
+		snprintf_P( counters_conf.channel[ch].name, CNT_PARAMNAME_LENGTH, PSTR("%s"), s_name );
 
 		// MAGPP
-		if ( s_magpp != NULL ) { counters_conf[channel].magpp = atof(s_magpp); }
+		if ( s_magpp != NULL ) { counters_conf.channel[ch].magpp = atof(s_magpp); }
 
         // MODO ( PULSO/CAUDAL )
 		if ( s_modo != NULL ) {
 			if ( strcmp_P( strupr(s_modo), PSTR("PULSO")) == 0 ) {
-				counters_conf[channel].modo_medida = PULSOS;
+				counters_conf.channel[ch].modo_medida = PULSOS;
 
 			} else if ( strcmp_P( strupr(s_modo) , PSTR("CAUDAL")) == 0 ) {
-				counters_conf[channel].modo_medida = CAUDAL;
+				counters_conf.channel[ch].modo_medida = CAUDAL;
 
 			} else {
 				xprintf_P(PSTR("ERROR: counters modo: PULSO/CAUDAL only!!\r\n"));
@@ -189,13 +196,13 @@ bool retS = false;
 		}
         
         if ( s_rb_size != NULL ) {
-            counters_conf[channel].rb_size = atoi(s_rb_size);
+            counters_conf.channel[ch].rb_size = atoi(s_rb_size);
         } else {
-            counters_conf[channel].rb_size = 1;
+            counters_conf.channel[ch].rb_size = 1;
         }
         
-        if ( counters_conf[channel].rb_size > MAX_RB_CAUDAL_STORAGE_SIZE ) {
-            counters_conf[channel].rb_size = 1;
+        if ( counters_conf.channel[ch].rb_size > MAX_RB_CAUDAL_STORAGE_SIZE ) {
+            counters_conf.channel[ch].rb_size = 1;
         }
         
 		retS = true;
@@ -235,7 +242,7 @@ uint8_t counter_read_pin(uint8_t cnt)
     return(0);
 }
 //------------------------------------------------------------------------------
-void counter_FSM(uint8_t i, counter_conf_t *counters_conf )
+void counter_FSM(uint8_t i )
 {
 
 uint16_t duracion_pulso_ticks = 0;
@@ -266,7 +273,7 @@ t_caudal_s rb_element;
                 CNTCB[i].pulse_count++;     // Pulso valido
                 
                 // Calculo el caudal instantaneo
-                if ( counters_conf[i].modo_medida == CAUDAL ) {
+                if ( counters_conf.channel[i].modo_medida == CAUDAL ) {
                     // Tengo 1 pulso en N ticks.
                     // 1 pulso -------> ticks_counts * 10 mS
                     // magpp (mt3) ---> ticks_counts * 10 mS
@@ -274,7 +281,7 @@ t_caudal_s rb_element;
                     CNTCB[i].ticks_count = 0;
                     
                     if ( duracion_pulso_ticks > 0 ) {
-                        CNTCB[i].caudal =  (( counters_conf[i].magpp * 3600000) /  ( duracion_pulso_ticks * 10)  ); // En mt3/h  
+                        CNTCB[i].caudal =  (( counters_conf.channel[i].magpp * 3600000) /  ( duracion_pulso_ticks * 10)  ); // En mt3/h  
                     } else {   
                         CNTCB[i].caudal = 0;
                     } 
@@ -291,7 +298,7 @@ t_caudal_s rb_element;
                 CNTCB[i].state = P_INSIDE;  // Paso a esperar que suba
                 
                 if ( f_debug_counters ) {
-                    if ( counters_conf[i].modo_medida == CAUDAL ) {
+                    if ( counters_conf.channel[i].modo_medida == CAUDAL ) {
                         xprintf_P( PSTR("COUNTERS: Q%d=%0.3f, P=%d, ticks=%d\r\n"), i, CNTCB[i].caudal, CNTCB[i].pulse_count, duracion_pulso_ticks );
                     } else {
                         xprintf_P( PSTR("COUNTERS: P%d=%d\r\n"), i, CNTCB[i].pulse_count );
@@ -379,18 +386,18 @@ uint8_t cnt;
     }
 }
 //------------------------------------------------------------------------------
-void counters_read( float *l_counters, counter_conf_t *counters_conf )
+void counters_read( float *l_counters )
 {
 
 uint8_t i;
     
-    promediar_rb_caudal(counters_conf);
+    promediar_rb_caudal();
     
     for (i=0; i < NRO_COUNTER_CHANNELS; i++) {
         
         //xprintf_P( PSTR("DEBUG1: C%d=%d\r\n"), i, CNTCB[i].pulse_count );
 
-        if ( counters_conf[i].modo_medida == CAUDAL ) {
+        if ( counters_conf.channel[i].modo_medida == CAUDAL ) {
             l_counters[i] = CNTCB[i].caudal;
         } else {
             l_counters[i] = (float) CNTCB[i].pulse_count;
@@ -400,7 +407,7 @@ uint8_t i;
     
 }
 //------------------------------------------------------------------------------
-void promediar_rb_caudal(counter_conf_t *counters_conf)
+void promediar_rb_caudal(void)
 {
 uint8_t i;
 t_caudal_s rb_element;
@@ -408,7 +415,7 @@ float q0,q1, Qavg0,Qavg1;
 
     // Promedio los ringBuffers
     Qavg0=0.0;
-    for (i=0; i < counters_conf[0].rb_size; i++) {
+    for (i=0; i < counters_conf.channel[0].rb_size; i++) {
         
         rb_element = caudal_storage_0[i];
         q0 = rb_element.caudal;
@@ -417,7 +424,7 @@ float q0,q1, Qavg0,Qavg1;
             xprintf_P(PSTR("DEBUG: i=%d [q0=%0.3f, avgQ0=%0.3f]\r\n"), i, q0, Qavg0 );
         }        
     }
-    Qavg0 /= counters_conf[0].rb_size;
+    Qavg0 /= counters_conf.channel[0].rb_size;
     CNTCB[0].caudal = Qavg0;
     if ( f_debug_counters ) {
         xprintf_P(PSTR("DEBUG: Qavg0=%0.3f\r\n"), Qavg0 );
@@ -425,7 +432,7 @@ float q0,q1, Qavg0,Qavg1;
     
     
     Qavg1=0.0;
-    for (i=0; i < counters_conf[1].rb_size; i++) {
+    for (i=0; i < counters_conf.channel[1].rb_size; i++) {
         
         rb_element = caudal_storage_1[i];
         q1 = rb_element.caudal;
@@ -434,7 +441,7 @@ float q0,q1, Qavg0,Qavg1;
             xprintf_P(PSTR("DEBUG: i=%d [q1=%0.3f, avgQ1=%0.3f]\r\n"), i, q1, Qavg1 );
         }        
     }
-    Qavg1 /= counters_conf[1].rb_size;
+    Qavg1 /= counters_conf.channel[1].rb_size;
     CNTCB[1].caudal = Qavg1;
     if ( f_debug_counters ) {
         xprintf_P(PSTR("DEBUG: Qavg1=%0.3f\r\n"), Qavg1);

@@ -56,20 +56,25 @@ typedef struct {
 	float magpp;
     t_counter_modo modo_medida;
     uint8_t rb_size;
-} counter_conf_t;
+} counter_channel_conf_t;
 
+typedef struct {
+    counter_channel_conf_t channel[NRO_COUNTER_CHANNELS];
+} counters_conf_t;
 
-void counters_init( counter_conf_t *counter_conf );
-void counters_config_defaults( counter_conf_t *counter_conf );
-void counters_config_print(counter_conf_t *counter_conf );
-bool counters_config_channel( uint8_t channel, counter_conf_t *counter_conf, char *s_enable, char *s_name, char *s_magpp, char *s_modo, char *s_rb_size );
+void counters_update_local_config( counters_conf_t *counters_system_conf);
+void counters_read_local_config( counters_conf_t *counters_system_conf);
+void counters_init( void );
+void counters_config_defaults( void );
+void counters_print_configuration( void );
+bool counters_config_channel( uint8_t ch, char *s_enable, char *s_name, char *s_magpp, char *s_modo, char *s_rb_size );
 void counters_config_debug(bool debug );
 bool counters_read_debug(void);
-void counter_FSM(uint8_t i, counter_conf_t *counter_conf );
+void counter_FSM(uint8_t i );
 void counters_clear(void);
 void counters_convergencia(void);
 uint8_t counters_read_pin(uint8_t cnt);
-void counters_read( float *l_counters, counter_conf_t *counter_conf );
+void counters_read( float *l_counters );
 uint8_t CNT0_read(void);
 uint8_t CNT1_read(void);
 

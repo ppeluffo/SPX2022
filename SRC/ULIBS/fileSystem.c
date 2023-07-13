@@ -177,7 +177,7 @@ uint8_t calc_cks, rd_cks;
 
     // Está todo bien. Ajusto los punteros.
 	FAT.count--;
-    next =FAT.tail + 1;
+    next = FAT.tail + 1;
     if ( next >= FAT.length) {
         next = 0;
     }

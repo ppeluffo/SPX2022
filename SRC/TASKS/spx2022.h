@@ -61,15 +61,15 @@ extern "C" {
 #include "protected_io.h"
 #include "ccp.h"
 
-#include <avr/io.h>
-#include <avr/builtins.h>
+//#include <avr/io.h>
+//#include <avr/builtins.h>
 #include <avr/wdt.h> 
-#include <avr/pgmspace.h>
-#include <avr/fuse.h>
-#include "stdint.h"
-#include "stdbool.h"
-#include "string.h"
-#include "math.h"
+//#include <avr/pgmspace.h>
+//#include <avr/fuse.h>
+//#include "stdint.h"
+//#include "stdbool.h"
+//#include "string.h"
+//#include "math.h"
 
 #include "frtos-io.h"
 #include "xprintf.h"
@@ -92,7 +92,7 @@ extern "C" {
 
 
 #define FW_REV "1.1.0"
-#define FW_DATE "@ 20230609"
+#define FW_DATE "@ 20230713"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR3"
@@ -114,6 +114,8 @@ extern "C" {
 #define tkRS485B_STACK_SIZE		384
 #define tkWAN_STACK_SIZE		384
 #define tkPILOTO_STACK_SIZE		384
+
+//#define PILOTO
 
 StaticTask_t tkCtl_Buffer_Ptr;
 StackType_t tkCtl_Buffer [tkCtl_STACK_SIZE];
@@ -197,6 +199,7 @@ bool xprint_from_dump(char *buff, bool f_dummy);
 bool config_samples ( char *s_samples );
 bool config_almlevel ( char *s_almlevel );
 void debug_print_rb(void);
+void reset_memory_remote(void);
 
 
 #define WAN_RX_BUFFER_SIZE 300
@@ -221,9 +224,9 @@ struct {
     bool debug;
     bool rele_output;
     float ainputs[NRO_ANALOG_CHANNELS];
-    float battery;
     float counters[NRO_COUNTER_CHANNELS];
     float modbus[NRO_MODBUS_CHANNELS];
+    float battery;
 } systemVars;
 
 typedef enum { WAN_RS485B = 0, WAN_NBIOT } wan_port_t;
@@ -238,10 +241,10 @@ struct {
     pwr_modo_t pwr_modo;
     uint16_t pwr_hhmm_on;
     uint16_t pwr_hhmm_off;
-	ainputs_conf_t ainputs_conf[NRO_ANALOG_CHANNELS];
-    counter_conf_t counters_conf[NRO_COUNTER_CHANNELS];
     uint8_t samples_count;      // Nro. de muestras para promediar una medida
     uint8_t alarm_level;        // Nivel de variacion de medidas para transmitir.
+	ainputs_conf_t ainputs_conf;
+    counters_conf_t counters_conf;
     modbus_conf_t modbus_conf;
     piloto_conf_t piloto_conf;
     

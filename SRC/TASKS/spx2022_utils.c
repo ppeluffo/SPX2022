@@ -6,7 +6,7 @@
  */
 
 #include "spx2022.h"
-
+#include "pines.h"
 
 //------------------------------------------------------------------------------
 int8_t WDT_init(void);
@@ -18,7 +18,7 @@ void system_init()
 {
 
 	CLKCTRL_init();
-    WDT_init();
+    //WDT_init();
     LED_init();
     XPRINTF_init();
     //COUNTERS_init();
@@ -29,6 +29,7 @@ void system_init()
     CONFIG_RTS_485A();
     CONFIG_RTS_485B();
     DRV8814_init();
+    FCx_init();
     
     
 }
@@ -66,6 +67,27 @@ void reset(void)
                                            
 }
 //------------------------------------------------------------------------------
+void reset_memory_remote(void)
+{
+    /*
+     * Desde el servidor podemos mandar resetear la memoria cuando detectamos
+     * problemas como fecha/hora en 0 o valores incorrectos.
+     * Se debe mandar 'RESMEM'
+     */
+          
+    vTaskSuspend( xHandle_tkSys );
+    vTaskSuspend( xHandle_tkRS485A );
+    vTaskSuspend( xHandle_tkRS485B );
+    //vTaskSuspend( xHandle_tkWAN );
+        
+
+    FS_format(true);
+    
+    xprintf("Reset..\r\n");
+    reset();
+    
+}
+//------------------------------------------------------------------------------
 void kick_wdt( uint8_t bit_pos)
 {
     // Pone el bit correspondiente en 0.
@@ -89,10 +111,10 @@ void config_default(void)
     systemConf.pwr_hhmm_on = 2330;
     systemConf.pwr_hhmm_off = 630;
  
-    ainputs_config_defaults( systemConf.ainputs_conf );
-    counters_config_defaults( systemConf.counters_conf );
-    modbus_config_defaults( &systemConf.modbus_conf );
-    piloto_config_defaults( &systemConf.piloto_conf );
+    ainputs_config_defaults();
+    counters_config_defaults();
+    modbus_config_defaults();
+    piloto_config_defaults();
 }
 //------------------------------------------------------------------------------
 bool config_debug( char *tipo, char *valor)
@@ -104,9 +126,23 @@ bool config_debug( char *tipo, char *valor)
     if (!strcmp_P( strupr(tipo), PSTR("NONE")) ) {
         ainputs_config_debug(false);
         counters_config_debug(false);
+        modbus_config_debug(false);
+        WAN_config_debug(false);
+        piloto_config_debug(false);
         return(true); 
     }
 
+    if (!strcmp_P( strupr(tipo), PSTR("PILOTO")) ) {
+        if (!strcmp_P( strupr(valor), PSTR("TRUE")) ) {
+            piloto_config_debug(true);
+            return(true);
+        }
+        if (!strcmp_P( strupr(valor), PSTR("FALSE")) ) {
+            piloto_config_debug(false);
+            return(true);
+        }
+    }
+    
     if (!strcmp_P( strupr(tipo), PSTR("MODBUS")) ) {
         if (!strcmp_P( strupr(valor), PSTR("TRUE")) ) {
             modbus_config_debug(true);
@@ -165,6 +201,9 @@ uint8_t cks;
     systemConf.checksum = cks;
     
     retVal = NVMEE_write( 0x00, (char *)&systemConf, sizeof(systemConf) );
+    
+    //xprintf_P(PSTR("DEBUG: Save in NVM OK\r\n"));
+    
     if (retVal == -1 )
         return(false);
     
@@ -383,7 +422,7 @@ void xprint_dr(dataRcd_s *dr)
      * Imprime en pantalla el dataRcd pasado
      */
     
-uint8_t channel;
+uint8_t i, channel;
 
 
     xprintf_P( PSTR("ID:%s;TYPE:%s;VER:%s;"), systemConf.dlgid, FW_TYPE, FW_REV);
@@ -393,27 +432,29 @@ uint8_t channel;
     xprintf_P( PSTR("TIME:%02d%02d%02d;"), dr->rtc.hour, dr->rtc.min, dr->rtc.sec);
     
     // Analog Channels:
-    for ( channel=0; channel < NRO_ANALOG_CHANNELS; channel++) {
+    for ( i=0; i < NRO_ANALOG_CHANNELS; i++) {
         //if ( strcmp ( systemConf.ainputs_conf[channel].name, "X" ) != 0 ) {
-        if ( systemConf.ainputs_conf[channel].enabled ) {
-            xprintf_P( PSTR("%s:%0.2f;"), systemConf.ainputs_conf[channel].name, dr->l_ainputs[channel]);
+        if ( systemConf.ainputs_conf.channel[i].enabled ) {
+            xprintf_P( PSTR("%s:%0.2f;"), systemConf.ainputs_conf.channel[i].name, dr->l_ainputs[i]);
         }
     }
         
     // Counter Channels:
     for ( channel=0; channel < NRO_COUNTER_CHANNELS; channel++) {
-        if ( strcmp ( systemConf.counters_conf[channel].name, "X" ) != 0 ) {
-            xprintf_P( PSTR("%s:%0.3f;"), systemConf.counters_conf[channel].name, dr->l_counters[channel]);
+        if ( strcmp ( systemConf.counters_conf.channel[channel].name, "X" ) != 0 ) {
+            xprintf_P( PSTR("%s:%0.3f;"), systemConf.counters_conf.channel[channel].name, dr->l_counters[channel]);
         }
     }
 
     // Modbus Channels:
-    for ( channel=0; channel < NRO_MODBUS_CHANNELS; channel++) {
-        if ( strcmp ( systemConf.modbus_conf.mbch[channel].name, "X" ) != 0 ) {
-            xprintf_P( PSTR("%s:%0.3f;"), systemConf.modbus_conf.mbch[channel].name, dr->l_modbus[channel]);
+    if (systemConf.modbus_conf.enabled) {
+        for ( channel=0; channel < NRO_MODBUS_CHANNELS; channel++) {
+            if ( systemConf.modbus_conf.mbch[channel].enabled ) {
+                xprintf_P( PSTR("%s:%0.3f;"), systemConf.modbus_conf.mbch[channel].name, dr->l_modbus[channel]);
+            }
         }
     }
-    
+       
     // Battery
     xprintf_P( PSTR("bt:%0.2f;"), dr->battery);
     

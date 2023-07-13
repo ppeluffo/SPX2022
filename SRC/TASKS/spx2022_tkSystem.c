@@ -31,7 +31,7 @@ uint32_t waiting_ticks;
     
     xprintf_P(PSTR("Starting tkSystem..\r\n"));
     
-    counters_init( systemConf.counters_conf );
+    counters_init();
     counters_start_timer();
     
     ainputs_init(systemConf.samples_count);
@@ -78,7 +78,7 @@ bool send_signal = false;
     for (i=0; i < NRO_ANALOG_CHANNELS; i++) {
         valor_previo = dataRcd_previo.l_ainputs[i];
         valor_actual = dataRcd->l_ainputs[i];
-        delta = systemConf.ainputs_conf[i].mmax * systemConf.alarm_level / 100;
+        delta = systemConf.ainputs_conf.channel[i].mmax * systemConf.alarm_level / 100;
         
         //xprintf_P(PSTR("DEBUG ALARM: %d, vp=%0.3f, va=%0.3f, delta=%0.3f\r\n"), i, valor_previo, valor_actual, delta);
         
@@ -86,7 +86,7 @@ bool send_signal = false;
         if ( delta > 0) {
 
             // Si el canal esta configurado
-            if ( strcmp ( systemConf.ainputs_conf[i].name, "X" ) != 0 ) {
+            if ( strcmp ( systemConf.ainputs_conf.channel[i].name, "X" ) != 0 ) {
                 
                 // Si el error excede el nivel de alarma
                 if ( delta < fabs( valor_actual - valor_previo) ) {
@@ -129,36 +129,32 @@ bool retS = false;
     while ( xSemaphoreTake( sem_SYSVars, ( TickType_t ) 5 ) != pdTRUE )
   		vTaskDelay( ( TickType_t)( 1 ) );
         
-    // ANALOG: Leo los 2 canales analogicos
-    for ( channel = 0; channel < ( NRO_ANALOG_CHANNELS - 1 ) ; channel++) {
-        if ( systemConf.ainputs_conf[channel].enabled ) {
-            ainputs_read_channel ( channel, systemConf.ainputs_conf, &mag, &raw );
+    // ANALOG: Leo los 3 canales analogicos
+    for ( channel = 0; channel < NRO_ANALOG_CHANNELS; channel++) {
+        if ( systemConf.ainputs_conf.channel[channel].enabled ) {
+            ainputs_read_channel ( channel, &mag, &raw );
             systemVars.ainputs[channel] = mag;
         }
     }
-    
-    /*
-    ainputs_read_channel ( 0, systemConf.ainputs_conf, &mag, &raw );
-    systemVars.ainputs[0] = mag;
         
-    ainputs_read_channel ( 1, systemConf.ainputs_conf, &mag, &raw );
-    systemVars.ainputs[1] = mag;
-    */
-    
     // Leo la bateria
-    ainputs_read_channel ( 99, systemConf.ainputs_conf, &mag, &raw );
-    systemVars.battery = mag;
+    if ( systemConf.ainputs_conf.channel[2].enabled ) {
+        systemVars.battery = -1.0;
+    } else{
+        ainputs_read_channel ( 99, &mag, &raw );
+        systemVars.battery = mag;
+    }
     
     // Apago los sensores
     ainputs_apagar_sensores();
         
     // Leo el valor de los contadores
-    counters_read( systemVars.counters, systemConf.counters_conf );
+    counters_read( systemVars.counters );
     counters_convergencia();
     counters_clear();
        
     // Leo los canales modbus 
-    modbus_read ( systemVars.modbus, &systemConf.modbus_conf);
+    modbus_read ( systemVars.modbus );
     
     // Armo el dr.
     memcpy(dataRcd->l_ainputs, systemVars.ainputs, sizeof(dataRcd->l_ainputs));
@@ -220,7 +216,7 @@ void counters_TimerCallback( TimerHandle_t xTimer )
 uint8_t cnt = 0;
     
     for (cnt=0; cnt < NRO_COUNTER_CHANNELS; cnt++) {
-        counter_FSM(cnt, systemConf.counters_conf );
+        counter_FSM(cnt);
     }
 
 }

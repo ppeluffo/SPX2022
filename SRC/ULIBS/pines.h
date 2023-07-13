@@ -152,6 +152,9 @@ void VSENSORS420_init(void);
 #define FC2_PIN_bp    PIN6_bp
 #define CONFIG_FC2    ( FC2_PORT.DIR &= ~FC2_PIN_bm )
 
+uint8_t FC1_read(void);
+uint8_t FC2_read(void);
+void FCx_init(void);
 
 #ifdef	__cplusplus
 }

@@ -20,7 +20,7 @@ extern "C" {
 #include "string.h"
     
     
-#include "printf.h"
+//#include "printf.h"
 #include "eeprom.h"
 #include "i2c.h"
 #include "rtc79410.h"

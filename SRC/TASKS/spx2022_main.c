@@ -1,3 +1,4 @@
+
 /*
  * File:   spx2022_main.c
  * Author: pablo
@@ -23,7 +24,16 @@
  * 1- Transmitir en modo bloque al hacer un dump.
  * 2- Consumo: entrar en modo tickless
  *
- *
+ * -----------------------------------------------------------------------------
+ * V1.1.0 @ 20230626
+ * Hay muchos equipos que no pasan de la configuracion.
+ * El problema es que se resetea x wdt. No queda claro porque pero con un
+ * wdg_reset en  wan_state_online_data se arregla.
+ * HAY QUE REVISAR TODO EL TEMA DE LOS WDGs. !!!!
+ * -----------------------------------------------------------------------------
+ * V1.1.0 @ 20230620
+ * Si el canal analogico 2 esta configurado, entonces la bateria es 0.
+ * El protocolo esta modificado para hablar con APICOMMSV3
  * -----------------------------------------------------------------------------
  * V1.0.8 @ 20230505
  * En los contadores incorporo el concepto de rb_size que sirve para determinar
@@ -69,6 +79,21 @@
 
 #include "spx2022.h"
 
+/*
+FUSES = {
+	.WDTCFG = 0x00, // WDTCFG {PERIOD=OFF, WINDOW=OFF}
+	.BODCFG = 0x00, // BODCFG {SLEEP=DISABLE, ACTIVE=DISABLE, SAMPFREQ=128Hz, LVL=BODLEVEL0}
+	.OSCCFG = 0xF8, // OSCCFG {CLKSEL=OSCHF}
+	.SYSCFG0 = 0xD2, // SYSCFG0 {EESAVE=CLEAR, RSTPINCFG=GPIO, CRCSEL=CRC16, CRCSRC=NOCRC}
+	.SYSCFG1 = 0xF8, // SYSCFG1 {SUT=0MS}
+	.CODESIZE = 0x00, // CODESIZE {CODESIZE=User range:  0x0 - 0xFF}
+	.BOOTSIZE = 0x00, // BOOTSIZE {BOOTSIZE=User range:  0x0 - 0xFF}
+};
+
+LOCKBITS = 0x5CC5C55C; // {KEY=NOLOCK}
+*/
+
+
 FUSES = {
 	.WDTCFG = 0x0B, // WDTCFG {PERIOD=8KCLK, WINDOW=OFF}
 	.BODCFG = 0x00, // BODCFG {SLEEP=DISABLE, ACTIVE=DISABLE, SAMPFREQ=128Hz, LVL=BODLEVEL0}
@@ -80,6 +105,7 @@ FUSES = {
 };
 
 LOCKBITS = 0x5CC5C55C; // {KEY=NOLOCK}
+
 
 
 //------------------------------------------------------------------------------
@@ -104,8 +130,11 @@ int main(void) {
     xHandle_tkRS485A = xTaskCreateStatic( tkRS485A, "COMMSA", tkRS485A_STACK_SIZE, (void *)1, tkRS485A_TASK_PRIORITY, tkRS485A_Buffer, &tkRS485A_Buffer_Ptr );
     xHandle_tkRS485B = xTaskCreateStatic( tkRS485B, "COMMSB", tkRS485B_STACK_SIZE, (void *)1, tkRS485B_TASK_PRIORITY, tkRS485B_Buffer, &tkRS485B_Buffer_Ptr );
     xHandle_tkWAN = xTaskCreateStatic( tkWAN, "WAN", tkWAN_STACK_SIZE, (void *)1, tkWAN_TASK_PRIORITY, tkWAN_Buffer, &tkWAN_Buffer_Ptr );
+ 
+#ifdef PILOTO
     xHandle_tkPILOTO = xTaskCreateStatic( tkPiloto, "PLT", tkPILOTO_STACK_SIZE, (void *)1, tkPILOTO_TASK_PRIORITY, tkPILOTO_Buffer, &tkPILOTO_Buffer_Ptr );
-   
+#endif
+    
     /* Arranco el RTOS. */
 	vTaskStartScheduler();
   

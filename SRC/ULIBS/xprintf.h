@@ -13,7 +13,7 @@ extern "C" {
 #endif
 
 #include "avr/pgmspace.h"
-#include "usart.h"
+//#include "usart.h"
     
     
 void XPRINTF_init(void);

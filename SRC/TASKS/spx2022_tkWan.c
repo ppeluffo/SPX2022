@@ -25,6 +25,7 @@ struct {
     bool dr_ready;
 } drWanBuffer;
 
+bool link_up4data;
 
 static void wan_state_apagado(void);
 static void wan_state_offline(void);
@@ -43,6 +44,11 @@ static bool wan_process_rsp_configCounters(void);
 static bool wan_process_frame_configModbus(void);
 static bool wan_process_rsp_configModbus(void);
 
+#ifdef PILOTO
+static bool wan_process_frame_configPiloto(void);
+static bool wan_process_rsp_configPiloto(void);
+#endif
+
 static bool wan_send_from_memory(void);
 static bool wan_process_frame_data(dataRcd_s *dr);
 static void wan_load_dr_in_txbuffer(dataRcd_s *dr, uint8_t *buff, uint16_t buffer_size );
@@ -52,8 +58,8 @@ static pwr_modo_t wan_check_pwr_modo_now(void);
 
 bool wan_process_from_dump(char *buff, bool ultimo );
 
-#define PRENDER_MODEM() RELE_K1_CLOSE()
-#define APAGAR_MODEM() RELE_K1_OPEN()
+void wan_PRENDER_MODEM(void);
+void wan_APAGAR_MODEM(void);
 
 #define DEBUG_WAN       true
 #define NO_DEBUG_WAN    false
@@ -84,6 +90,7 @@ void tkWAN(void * pvParameters)
     
     wan_state = WAN_APAGADO;
     f_inicio = true;
+    link_up4data = false;
     
 	// loop
 	for( ;; )
@@ -127,8 +134,10 @@ BaseType_t xResult;
 
     kick_wdt(XWAN_WDG_bp);
     xprintf_P(PSTR("WAN:: State APAGADO\r\n"));
-       
-    APAGAR_MODEM();
+     
+    link_up4data = false;
+    
+    wan_APAGAR_MODEM();
     vTaskDelay( ( TickType_t)( 5000 / portTICK_PERIOD_MS ) );
     
     // Cuando inicio me conecto siempre sin esperar para configurarme y vaciar la memoria.
@@ -140,7 +149,7 @@ BaseType_t xResult;
     
     pwr_modo = wan_check_pwr_modo_now();
     
-    //xprintf_P(PSTR("DEBUG: timerdial=%d, pwr_modo=%d\r\n"), systemConf.timerdial, systemConf.pwr_modo );
+    //xprintf_P(PSTR("DEBUG2: timerdial=%d, pwr_modo=%d\r\n"), systemConf.timerdial, systemConf.pwr_modo );
                 
     // En modo continuo salgo enseguida. No importa timerdial
     if ( pwr_modo == PWR_CONTINUO) {
@@ -179,7 +188,7 @@ BaseType_t xResult;
     
 exit:
     
-    PRENDER_MODEM();
+    wan_PRENDER_MODEM();
     wan_state = WAN_OFFLINE;
     return;
   
@@ -247,18 +256,35 @@ static void wan_state_online_config(void)
     if ( ! wan_process_frame_configBase() ) {
         // No puedo configurarse o porque el servidor no responde
         // o porque da errores. Espero 1H
-        xprintf_P(PSTR("WAN:: Errores en configuracion. Espero 1H..!!\r\n"));
-        systemConf.timerdial = 3600;
-        systemConf.timerpoll = 3600;
+        xprintf_P(PSTR("WAN:: Errores en configuracion. Espero 30mins..!!\r\n"));
+        systemConf.timerdial = 1800;
+        systemConf.timerpoll = 1800;
         systemConf.pwr_modo = PWR_DISCRETO;
         wan_state = WAN_APAGADO;
         return;
     }
+    
+    wdt_reset();
     wan_process_frame_configAinputs();
+    wdt_reset();
     wan_process_frame_configCounters();
-    //wan_process_frame_configModbus();
+    wdt_reset();
+    wan_process_frame_configModbus();
+    wdt_reset();
+    
+#ifdef PILOTO
+    wan_process_frame_configPiloto();
+    wdt_reset();
+#endif
+    
+    ainputs_read_local_config(&systemConf.ainputs_conf);
+    counters_read_local_config(&systemConf.counters_conf);
+    modbus_read_local_config(&systemConf.modbus_conf);
+    piloto_read_local_config(&systemConf.piloto_conf);
+    
     save_config_in_NVM();    
     wan_state = WAN_ONLINE_DATA;
+    wdt_reset();
     
 //quit:
                 
@@ -283,6 +309,7 @@ bool res;
     xprintf_P(PSTR("WAN:: State ONLINE_DATA\r\n"));
     kick_wdt(XWAN_WDG_bp);
     
+    link_up4data = true;
    
 // ENTRY:
     
@@ -293,7 +320,7 @@ bool res;
     wan_send_from_memory();  
     // 
     // En modo continuo, envio cuando hay datos.
-    pwr_modo = wan_check_pwr_modo_now();
+    pwr_modo = wan_check_pwr_modo_now();   
     if ( pwr_modo == PWR_DISCRETO) {
        wan_state = WAN_APAGADO;
        goto quit;
@@ -302,6 +329,9 @@ bool res;
     // En modo continuo me quedo esperando por datos para transmitir. 
     while( wan_check_pwr_modo_now() == PWR_CONTINUO ) {
            
+        wdt_reset();
+        //xprintf_P(PSTR("DEBUG Check data 1..\r\n"));
+        
         // Hay datos para transmitir
         if ( drWanBuffer.dr_ready ) {
             res =  wan_process_frame_data( &drWanBuffer.dr);
@@ -314,16 +344,17 @@ bool res;
             }
         }
         
+        
         // Espero que hayan mas datos
          // Vuelvo a chequear el enlace cada 1 min( tickeless & wdg ).
         kick_wdt(XWAN_WDG_bp);
         sleep_time_ms = ( TickType_t)(  (60000) / portTICK_PERIOD_MS );
-        ulTaskNotifyTake( pdTRUE, sleep_time_ms );
-        //vTaskDelay( ( TickType_t)( systemConf.timerpoll * 1000 / portTICK_PERIOD_MS ) );      
+        ulTaskNotifyTake( pdTRUE, sleep_time_ms );;  
     }
    
 quit:
     
+    link_up4data = false;
     return;        
 }
 //------------------------------------------------------------------------------
@@ -334,6 +365,8 @@ RtcTimeType_t rtc;
 uint16_t now;
 uint16_t pwr_on;
 uint16_t pwr_off;
+
+    //xprintf_P(PSTR("DEBUG: timerdial=%d, pwr_modo=%d\r\n"), systemConf.timerdial, systemConf.pwr_modo );
 
    // En modo continuo salgo enseguida. No importa timerdial
     if ( systemConf.pwr_modo == PWR_CONTINUO) {
@@ -392,7 +425,7 @@ bool retS = false;
     sprintf_P( (char*)&wan_tx_buffer, PSTR("ID=%s&TYPE=%s&VER=%s&CLASS=PING"), systemConf.dlgid, FW_TYPE, FW_REV );
         
     // Proceso
-    tryes = 12;
+    tryes = 6;
     while (tryes-- > 0) {
         
         kick_wdt(XWAN_WDG_bp);   
@@ -459,7 +492,7 @@ bool retS = false;
         timeout = 10;
         while ( timeout-- > 0) {
             vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-            if ( wan_check_response("CLASS=RECOVER&DLGID")) {
+            if ( wan_check_response("CLASS=RECOVER")) {
                 wan_print_RXbuffer();
                 wan_process_rsp_recoverId();
                 retS = true;
@@ -488,8 +521,8 @@ static bool wan_process_rsp_recoverId(void)
 {
     /*
      * Extraemos el DLGID del frame y lo reconfiguramos
-     * RXFRAME: <html><body><h1>CLASS=RECOVER&DLGID=xxxx</h1></body></html>
-     *          <html><body><h1>CLASS=RECOVER&DLGID=DEFAULT</h1></body></html>
+     * RXFRAME: <html><body><h1>CLASS=RECOVER&ID=xxxx</h1></body></html>
+     *          <html><body><h1>CLASS=RECOVER&ID=DEFAULT</h1></body></html>
      */
     
 char localStr[32] = { 0 };
@@ -505,7 +538,7 @@ char *p;
 	strncpy(localStr, ts, sizeof(localStr));
 	stringp = localStr;
 	token = strsep(&stringp,delim);	    // RECOVER
-	token = strsep(&stringp,delim);	 	// DLGID
+	token = strsep(&stringp,delim);	 	// ID
 	token = strsep(&stringp,delim);	 	// TEST01
 	// Copio el dlgid recibido al systemConf.
 	memset(systemConf.dlgid,'\0', sizeof(systemConf.dlgid) );
@@ -776,15 +809,15 @@ char *p;
     for(i=0; i<NRO_ANALOG_CHANNELS; i++) {
         memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
         j = 0;
-        if ( systemConf.ainputs_conf[i].enabled ) {
+        if ( systemConf.ainputs_conf.channel[i].enabled ) {
             j += sprintf_P( (char *)&hash_buffer[j], PSTR("[A%d:TRUE,"), i );
         } else {
             j += sprintf_P( (char *)&hash_buffer[j], PSTR("[A%d:FALSE,"), i );
         }
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%s,"), systemConf.ainputs_conf[i].name );
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d,%d,"), systemConf.ainputs_conf[i].imin, systemConf.ainputs_conf[i].imax );
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f,%.02f,"), systemConf.ainputs_conf[i].mmin, systemConf.ainputs_conf[i].mmax );
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f]"), systemConf.ainputs_conf[i].offset);    
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%s,"), systemConf.ainputs_conf.channel[i].name );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d,%d,"), systemConf.ainputs_conf.channel[i].imin, systemConf.ainputs_conf.channel[i].imax );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f,%.02f,"), systemConf.ainputs_conf.channel[i].mmin, systemConf.ainputs_conf.channel[i].mmax );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.02f]"), systemConf.ainputs_conf.channel[i].offset);    
         p = (char *)hash_buffer;
         while (*p != '\0') {
             hash = u_hash(hash, *p++);
@@ -889,7 +922,7 @@ bool retS = false;
 			tk_mMax = strsep(&stringp,delim);		//mMax
 			tk_offset = strsep(&stringp,delim);		//offset
 
-			ainputs_config_channel( ch, systemConf.ainputs_conf, tk_enable, tk_name , tk_iMin, tk_iMax, tk_mMin, tk_mMax, tk_offset );
+			ainputs_config_channel( ch, tk_enable, tk_name , tk_iMin, tk_iMax, tk_mMin, tk_mMax, tk_offset );
 			xprintf_P( PSTR("WAN:: Reconfig A%d\r\n"), ch);
 		}
 	}
@@ -922,21 +955,21 @@ char *p;
 
         memset(hash_buffer, '\0', HASH_BUFFER_SIZE);
         j = 0;
-        if ( systemConf.ainputs_conf[i].enabled ) {
+        if ( systemConf.ainputs_conf.channel[i].enabled ) {
             j += sprintf_P( (char *)&hash_buffer[j], PSTR("[C%d:TRUE,"), i );
         } else {
             j += sprintf_P( (char *)&hash_buffer[j], PSTR("[C%d:FALSE,"), i );
         }
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%s,"), systemConf.counters_conf[i].name );
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.03f,"), systemConf.counters_conf[i].magpp );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%s,"), systemConf.counters_conf.channel[i].name );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%.03f,"), systemConf.counters_conf.channel[i].magpp );
         
-        if ( systemConf.counters_conf[i].modo_medida == 0 ) {
+        if ( systemConf.counters_conf.channel[i].modo_medida == 0 ) {
             j += sprintf_P( (char *)&hash_buffer[j], PSTR("CAUDAL,"));
         } else {
             j += sprintf_P( (char *)&hash_buffer[j], PSTR("PULSOS,"));
         }
 
-        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d]"), systemConf.counters_conf[i].rb_size );
+        j += sprintf_P( (char *)&hash_buffer[j], PSTR("%d]"), systemConf.counters_conf.channel[i].rb_size );
 
        
         p = (char *)hash_buffer;
@@ -1044,7 +1077,7 @@ bool retS = false;
             tk_rbsize = strsep(&stringp,delim);     //rbsize
 
             //xprintf_P(PSTR("DEBUG: ch=%d,enable=%s,name=%s magpp=%s,modo=%s,rbsize=%s\r\n"), ch, tk_enable, tk_name, tk_magpp, tk_modo, tk_rbsize);
-			counters_config_channel( ch , systemConf.counters_conf, tk_enable, tk_name , tk_magpp, tk_modo, tk_rbsize );         
+			counters_config_channel( ch , tk_enable, tk_name , tk_magpp, tk_modo, tk_rbsize );         
 			xprintf_P( PSTR("WAN:: Reconfig C%d\r\n"), ch);
 		}
 	}
@@ -1072,7 +1105,7 @@ uint8_t hash = 0;
 
     xprintf_P(PSTR("WAN:: CONFIG_MODBUS.\r\n"));
  
-    hash = modbus_hash( &systemConf.modbus_conf, u_hash );
+    hash = modbus_hash(u_hash );
     
     // Armo el buffer
     while ( xSemaphoreTake( sem_WAN, MSTOTAKEWANSEMPH ) != pdTRUE )
@@ -1170,7 +1203,7 @@ bool retS = false;
         stringp = localStr;
         tk_enable = strsep(&stringp,delim);	 	// ENABLE
         tk_enable = strsep(&stringp,delim);	 	// TRUE/FALSE
-        modbus_config_enable( &systemConf.modbus_conf, tk_enable);
+        modbus_config_enable(tk_enable);
         xprintf_P( PSTR("WAN:: Reconfig MODBUS ENABLE to %s\r\n"), tk_enable );
     }
 
@@ -1181,13 +1214,15 @@ bool retS = false;
         stringp = localStr;
         tk_address = strsep(&stringp,delim);	 	// ENABLE
         tk_address = strsep(&stringp,delim);	 	// TRUE/FALSE
-        modbus_config_localaddr( &systemConf.modbus_conf, tk_address);
+        modbus_config_localaddr(tk_address);
         xprintf_P( PSTR("WAN:: Reconfig MODBUS LOCALADDR to %s\r\n"), tk_address );
     }
+    
     
     //
 	// MB? M0=TRUE,CAU0,2,2069,2,3,FLOAT,C1032,0
 	for (ch=0; ch < NRO_MODBUS_CHANNELS; ch++ ) {
+        
 		memset( &str_base, '\0', sizeof(str_base) );
 		snprintf_P( str_base, sizeof(str_base), PSTR("M%d"), ch );
 
@@ -1207,7 +1242,7 @@ bool retS = false;
 			tk_codec = strsep(&stringp,delim);		//codec
 			tk_pow10 = strsep(&stringp,delim);		//pow10
                     
-			modbus_config_channel( ch, &systemConf.modbus_conf, 
+			modbus_config_channel( ch,
                     tk_enable, 
                     tk_name, 
                     tk_sla, 
@@ -1227,6 +1262,166 @@ exit_:
     return(retS);
 }
 //------------------------------------------------------------------------------
+#ifdef PILOTO
+static bool wan_process_frame_configPiloto(void)
+{
+    /*
+      * Envo un frame con el hash de la configuracion del pilotos.
+      * El server me puede mandar OK o la nueva configuracion que debo tomar.
+      * Lo reintento 2 veces
+      */
+    
+uint8_t tryes = 0;
+uint8_t timeout = 0;
+bool retS = false;
+uint8_t hash = 0;
+
+    xprintf_P(PSTR("WAN:: CONFIG_PILOTO.\r\n"));
+ 
+    hash = piloto_hash( u_hash );
+    
+    // Armo el buffer
+    while ( xSemaphoreTake( sem_WAN, MSTOTAKEWANSEMPH ) != pdTRUE )
+        vTaskDelay( ( TickType_t)( 1 ) );
+    memset(wan_tx_buffer, '\0', WAN_TX_BUFFER_SIZE);
+    sprintf_P( (char*)&wan_tx_buffer, PSTR("ID=%s&TYPE=%s&VER=%s&CLASS=CONF_PILOTO&HASH=0x%02X"), systemConf.dlgid, FW_TYPE, FW_REV, hash );
+
+    // Proceso. Envio hasta 2 veces el frame y espero hasta 10s la respuesta
+    tryes = 2;
+    while (tryes-- > 0) {
+        
+        kick_wdt(XWAN_WDG_bp);     
+        wan_xmit_out(DEBUG_WAN);
+    
+        // Espero respuesta chequeando cada 1s durante 10s.
+        timeout = 10;
+        while ( timeout-- > 0) {
+            vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
+            if ( wan_check_response("CONFIG=ERROR")) {
+                xprintf_P(PSTR("WAN:: CONF_PILOTO ERROR: El servidor no reconoce al datalogger !!\r\n"));
+                retS = false;
+                goto exit_;
+            
+            } else if ( wan_check_response("CONF_PILOTO&CONFIG=OK")) {
+                wan_print_RXbuffer();
+                retS = true;
+                goto exit_;
+                
+            } else if ( wan_check_response( "CLASS=CONF_PILOTO" )) {
+                wan_print_RXbuffer();
+                wan_process_rsp_configPiloto();
+                retS = true;
+                goto exit_;
+            } 
+        }
+    }
+ 
+    // Expiro el tiempo sin respuesta del server.
+    xprintf_P(PSTR("WAN:: CONFIG_PILOTO ERROR: Timeout en server rsp.!!\r\n"));
+    retS = false;
+    
+exit_:
+               
+    xSemaphoreGive( sem_WAN );
+    return(retS);       
+}
+//------------------------------------------------------------------------------
+static bool wan_process_rsp_configPiloto(void)
+{
+   /*
+     * Procesa la configuracion de los canales Modbus
+     * RXFRAME: <html><body><h1>CLASS=CONF_PILOTO&ENABLE=TRUE&PULSEXREV=100&PWIDTH=10&
+     *                                             S0=230,1.34&
+     *                                             S1=650,2.4&
+     *                                             .....
+     *                                             S11=2330,3.2</h1></body></html>
+     *                          CLASS:CONF_PILOTO;CONFIG:OK
+     * 
+     */
+
+    
+char *ts = NULL;
+char localStr[48] = { 0 };
+char *stringp = NULL;
+char *tk_enable= NULL;
+char *tk_pulsexrev= NULL;
+char *tk_pwidth= NULL;
+char *tk_stime = NULL;
+char *tk_spres = NULL;
+char *delim = "&,;:=><";
+uint8_t slot;
+char str_base[8];
+char *p;
+bool retS = false;
+
+    p = lBchar_get_buffer(&wan_lbuffer);
+    
+    if  ( strstr( p, "CONFIG=OK") != NULL ) {
+        retS = true;
+       goto exit_;
+    }
+
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "ENABLE=");
+    if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        tk_enable = strsep(&stringp,delim);	 	// ENABLE
+        tk_enable = strsep(&stringp,delim);	 	// TRUE/FALSE
+        piloto_config_enable(tk_enable);
+        xprintf_P( PSTR("WAN:: Reconfig PILOTO ENABLE to %s\r\n"), tk_enable );
+    }
+
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "PULSEXREV=");
+    if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        tk_pulsexrev = strsep(&stringp,delim);	 	// PULSEXREV
+        tk_pulsexrev = strsep(&stringp,delim);	 	// 1500
+        piloto_config_pulseXrev(tk_pulsexrev);
+        xprintf_P( PSTR("WAN:: Reconfig PILOTO PULSEXREV to %s\r\n"), tk_pulsexrev );
+    }
+    
+    memset(localStr,'\0',sizeof(localStr));
+	ts = strstr( p, "PWIDTH=");
+    if  ( ts != NULL ) {
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        tk_pwidth = strsep(&stringp,delim);	 	// PWIDTH
+        tk_pwidth = strsep(&stringp,delim);	 	// 10
+        piloto_config_pwidth(tk_pwidth);
+        xprintf_P( PSTR("WAN:: Reconfig PILOTO PWIDTH to %s\r\n"), tk_pwidth );
+    }
+    
+    //
+	// SLOTS: Sx:time,pres
+	for (slot=0; slot < MAX_PILOTO_PSLOTS; slot++ ) {
+        
+		memset( &str_base, '\0', sizeof(str_base) );
+		snprintf_P( str_base, sizeof(str_base), PSTR("S%d"), slot );
+
+		if ( strstr( p, str_base) != NULL ) {
+			memset(localStr,'\0',sizeof(localStr));
+            ts = strstr( p, str_base);
+			strncpy( localStr, ts, sizeof(localStr));
+			stringp = localStr;
+			tk_stime = strsep(&stringp,delim);	   //Sx
+            tk_stime = strsep(&stringp,delim);     //time
+			tk_spres = strsep(&stringp,delim);	   //pres
+                    
+			piloto_config_slot( slot,tk_stime, tk_spres );
+			xprintf_P( PSTR("WAN:: Reconfig PILOTO SLOT %d\r\n"), slot);
+		}
+	}
+    retS = true;
+   
+exit_:
+                
+    return(retS);
+}
+#endif
+//------------------------------------------------------------------------------
 static bool wan_send_from_memory(void)
 {
     /*
@@ -1237,13 +1432,19 @@ static bool wan_send_from_memory(void)
     
 dataRcd_s dr;
 bool retS = false;
+fat_s l_fat;
 
     xprintf_P(PSTR("WAN:: Dump memory...\r\n"));
     while ( FS_readRcd( &dr, sizeof(dataRcd_s) )) {
+        
         retS = wan_process_frame_data(&dr);
         if ( ! retS) {
             goto quit;
         }
+        
+        FAT_read(&l_fat);
+        xprintf_P( PSTR("Mem: wrPtr=%d,rdPtr=%d,count=%d\r\n"),l_fat.head,l_fat.tail, l_fat.count );
+
     }
     retS = true;
     
@@ -1319,7 +1520,7 @@ static void wan_load_dr_in_txbuffer(dataRcd_s *dr, uint8_t *buff, uint16_t buffe
      * En semaforo lo debo tomar en la funcion que invoca !!!.
      */
 
-uint8_t channel;
+uint8_t i;
 int16_t fptr;
 
    // Armo el buffer
@@ -1332,23 +1533,25 @@ int16_t fptr;
     fptr += sprintf_P( (char *)&buff[fptr], PSTR("&TIME=%02d%02d%02d"), dr->rtc.hour,dr->rtc.min, dr->rtc.sec);
     
     // Analog Channels:
-    for ( channel=0; channel < NRO_ANALOG_CHANNELS; channel++) {
-        if ( strcmp ( systemConf.ainputs_conf[channel].name, "X" ) != 0 ) {
-            fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.2f"), systemConf.ainputs_conf[channel].name, dr->l_ainputs[channel]);
+    for ( i=0; i < NRO_ANALOG_CHANNELS; i++) {
+        if ( strcmp ( systemConf.ainputs_conf.channel[i].name, "X" ) != 0 ) {
+            fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.2f"), systemConf.ainputs_conf.channel[i].name, dr->l_ainputs[i]);
         }
     }
         
     // Counter Channels:
-    for ( channel=0; channel < NRO_COUNTER_CHANNELS; channel++) {
-        if ( strcmp ( systemConf.counters_conf[channel].name, "X" ) != 0 ) {
-            fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.3f"), systemConf.counters_conf[channel].name, dr->l_counters[channel]);
+    for ( i=0; i < NRO_COUNTER_CHANNELS; i++) {
+        if ( strcmp ( systemConf.counters_conf.channel[i].name, "X" ) != 0 ) {
+            fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.3f"), systemConf.counters_conf.channel[i].name, dr->l_counters[i]);
         }
     }
     
     // Modbus Channels:
-    for ( channel=0; channel < NRO_MODBUS_CHANNELS; channel++) {
-        if ( strcmp ( systemConf.modbus_conf.mbch[channel].name, "X" ) != 0 ) {
-            fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.3f"), systemConf.modbus_conf.mbch[channel].name, dr->l_modbus[channel]);
+    if (systemConf.modbus_conf.enabled) {
+        for ( i=0; i < NRO_MODBUS_CHANNELS; i++) {
+            if ( systemConf.modbus_conf.mbch[i].enabled ) {
+                fptr += sprintf_P( (char*)&buff[fptr], PSTR("&%s=%0.3f"), systemConf.modbus_conf.mbch[i].name, dr->l_modbus[i]);
+            }
         }
     }
     
@@ -1363,7 +1566,7 @@ static bool wan_process_rsp_data(void)
 {
    /*
      * Procesa las respuestas a los frames DATA
-     * Podemos recibir CLOCK, RESET
+     * Podemos recibir CLOCK, RESET, PILOTO
      */
     
 char localStr[32] = { 0 };
@@ -1394,9 +1597,26 @@ char *p;
         } else {
             data_resync_clock( token, false );
         }
-        
     }
+    
+#ifdef PILOTO
+    if ( strstr( p, "PILOTO") != NULL ) {
+        memset(localStr,'\0',sizeof(localStr));
+        ts = strstr( p, "PILOTO=");
+        strncpy(localStr, ts, sizeof(localStr));
+        stringp = localStr;
+        token = strsep(&stringp,delim);			// PILOTO
+        token = strsep(&stringp,delim);			// 3.45
+        piloto_productor_handler_online(atof(token));
+    }
+#endif
 
+    if ( strstr( p, "RESMEM") != NULL ) {
+        xprintf_P(PSTR("WAN:: RESET MEMORY order from Server !!\r\n"));
+        vTaskDelay( ( TickType_t)( 2000 / portTICK_PERIOD_MS ) );
+        reset_memory_remote();
+    }
+    
     if ( strstr( p, "RESET") != NULL ) {
         xprintf_P(PSTR("WAN:: RESET order from Server !!\r\n"));
         vTaskDelay( ( TickType_t)( 2000 / portTICK_PERIOD_MS ) );
@@ -1476,7 +1696,7 @@ bool retS = false;
 fat_s l_fat;   
 
     // link up
-    if ( true ) {
+    if ( link_up4data  ) {
         /*
          * Hay enlace. 
          * Guardo el dato en el buffer.
@@ -1554,3 +1774,17 @@ bool WAN_read_debug(void)
     return (f_debug_comms);
 }
 //------------------------------------------------------------------------------
+void wan_PRENDER_MODEM(void)
+{
+    RELE_K1_CLOSE();
+    xprintf_P(PSTR("WAN:: PRENDER MODEM\r\n"));
+}
+//------------------------------------------------------------------------------
+void wan_APAGAR_MODEM(void)
+{
+    RELE_K1_OPEN();
+    xprintf_P(PSTR("WAN:: APAGAR MODEM\r\n"));
+}
+//------------------------------------------------------------------------------
+
+        

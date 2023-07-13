@@ -31,7 +31,13 @@ fat_s l_fat;
        config_default();
     }
        
+    ainputs_update_local_config(&systemConf.ainputs_conf);
+    counters_update_local_config(&systemConf.counters_conf);
+    modbus_update_local_config(&systemConf.modbus_conf);
+    piloto_read_local_config(&systemConf.piloto_conf);
+    
     WDG_INIT();
+    //WDT_init();
     
     systemVars.rele_output = false;
     
@@ -59,7 +65,8 @@ fat_s l_fat;
     
 	for( ;; )
 	{
-		vTaskDelay( ( TickType_t)( 1000 * TKCTL_DELAY_S / portTICK_PERIOD_MS ) );
+        vTaskDelay( ( TickType_t)( 5000 / portTICK_PERIOD_MS ) );
+		//vTaskDelay( ( TickType_t)( 1000 * TKCTL_DELAY_S / portTICK_PERIOD_MS ) );
         led_flash();
         sys_watchdog_check();
         sys_daily_reset();
@@ -75,6 +82,7 @@ void sys_watchdog_check(void)
     
 static uint8_t wdg_count = 0;
 
+    //xprintf_P(PSTR("wdg reset\r\n"));
     wdt_reset();
     return;
         
