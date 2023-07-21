@@ -1,8 +1,5 @@
-/*
- * https://stackoverflow.com/questions/13730786/c-pass-int-array-pointer-as-parameter-into-a-function
- *  
- */
-#include "counters.h"
+
+#include "contadores.h"
 
 typedef enum { P_OUTSIDE=0, P_CHECKING, P_INSIDE, P_FILTER } pulse_t;
 
@@ -33,28 +30,28 @@ counters_conf_t counters_conf;
 
 void promediar_rb_caudal(void);
 
-//static SemaphoreHandle_t countersLocalSem;
+static SemaphoreHandle_t countersLocalSem;
 
 //------------------------------------------------------------------------------
-//void counters_init_outofrtos( SemaphoreHandle_t semph)
-//{
-//    countersLocalSem = semph;
-//}
+void counters_init_outofrtos( SemaphoreHandle_t semph)
+{
+    countersLocalSem = semph;
+}
 // -----------------------------------------------------------------------------
 void counters_update_local_config( counters_conf_t *counters_system_conf)
 {
-//    while ( xSemaphoreTake( countersLocalSem, ( TickType_t ) 5 ) != pdTRUE )
+    while ( xSemaphoreTake( countersLocalSem, ( TickType_t ) 5 ) != pdTRUE )
   		vTaskDelay( ( TickType_t)( 1 ) );
     memcpy( &counters_conf, counters_system_conf, sizeof(counters_conf_t));
- //   xSemaphoreGive( countersLocalSem );
+    xSemaphoreGive( countersLocalSem );
 }
 // -----------------------------------------------------------------------------
 void counters_read_local_config( counters_conf_t *counters_system_conf)
 {
- //   while ( xSemaphoreTake( countersLocalSem, ( TickType_t ) 5 ) != pdTRUE )
+    while ( xSemaphoreTake( countersLocalSem, ( TickType_t ) 5 ) != pdTRUE )
   		vTaskDelay( ( TickType_t)( 1 ) );
     memcpy( counters_system_conf, &counters_conf, sizeof(counters_conf_t)); 
- //   xSemaphoreGive( countersLocalSem );
+    xSemaphoreGive( countersLocalSem );
 }
 // -----------------------------------------------------------------------------
 void counters_init( void )

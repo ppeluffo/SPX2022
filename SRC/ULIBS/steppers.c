@@ -4,7 +4,48 @@
 // https://www.monolithicpower.com/bipolar-stepper-motors-part-i-control-modes
 
 static int8_t phase = 0;
+static uint16_t cb_steps;
+static uint16_t cb_dtime;
+static bool motor_running;
+static t_stepper_dir cb_dir;
 
+TimerHandle_t stepper_xTimer;
+StaticTimer_t stepper_xTimerBuffer;
+void stepper_TimerCallback( TimerHandle_t xTimer );
+void stepper_rollback(void);
+
+//
+//------------------------------------------------------------------------------
+void stepper_init_outofrtos(void)
+{
+	// Configuro el timer que va a generar los pulsos del stepper
+	// Se debe correr antes que empieze el RTOS
+
+	stepper_xTimer = xTimerCreateStatic ("STEPPER",
+			pdMS_TO_TICKS( 100 ),
+			pdTRUE,
+			( void * ) 0,
+			stepper_TimerCallback,
+			&stepper_xTimerBuffer
+			);
+    
+}
+//------------------------------------------------------------------------------
+void stepper_TimerCallback( TimerHandle_t xTimer )
+{
+	// Genera un pulso.
+	// Cuando la cuenta de pulsos llega a 0, se desactiva.
+
+    stepper_set_phase(phase, cb_dtime);
+    stepper_next_phase(cb_dir);
+        
+	if ( cb_steps-- == 0 ) {
+		// Detengo el timer.
+        motor_running = false;
+		xTimerStop( xTimer, 10 );
+	}
+
+}
 //------------------------------------------------------------------------------
 void stepper_init_phase(void)
 {
@@ -64,6 +105,67 @@ void stepper_move( t_stepper_dir dir, uint16_t npulses, uint16_t dtime, uint16_t
 	/*
 	 * Genera en el stepper una cantidad de pulsos npulses
      * En ancho de c/pulso es dtime.
+     * La separacion entre pulsos es ptime ( periodo = 2*ptime)
+     * separados
+	 *
+	 */
+
+	// Activo el driver
+    
+    xTimerStop( stepper_xTimer, 10 );
+	DRV8814_awake();
+	vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
+
+    
+	// Pongo la secuencia incial en 2 para que puede moverme para adelante o atras
+	// sin problemas de incializacion
+	//stepper_init_sequence();
+    cb_steps = npulses;
+    cb_dir = dir;
+    cb_dtime = dtime;
+    
+    motor_running = true;
+    xTimerChangePeriod(stepper_xTimer, ( ptime * 2) / portTICK_PERIOD_MS , 10 );
+	xTimerStart( stepper_xTimer, 10 );
+    while(motor_running) {
+        vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
+        // Controlo fines de carrera
+        if ( ( FC1_read() == 0 ) || ( FC2_read() == 0) ) {
+            xTimerStop( stepper_xTimer, 10 );
+            xprintf_P(PSTR("Steppers: STOP X FIN DE CARRERA.\r\n"));
+            // Rollback
+            stepper_rollback();
+            break;
+        }
+    
+    }
+    
+	// Desactivo el driver
+	DRV8814_sleep();
+}
+//------------------------------------------------------------------------------
+void stepper_rollback(void) 
+{
+    ( cb_dir == STEPPER_FWD) ? (cb_dir = STEPPER_REV) : (cb_dir = STEPPER_FWD);
+    cb_steps = 1000;
+    xTimerStart( stepper_xTimer, 10 );
+    while(motor_running) {
+        vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
+        // Controlo fines de carrera
+        if ( ( FC1_read() == 1) && ( FC2_read() == 1) ) {
+            xTimerStop( stepper_xTimer, 10 );
+            break;
+        }
+    }
+    xprintf_P(PSTR("Steppers: ROLLBACK END.(steps=%d)\r\n"), cb_steps);
+    
+}
+//------------------------------------------------------------------------------
+void stepper_move_001( t_stepper_dir dir, uint16_t npulses, uint16_t dtime, uint16_t ptime )
+{
+	/*
+	 * Genera en el stepper una cantidad de pulsos npulses
+     * En ancho de c/pulso es dtime.
      * La separacion entre pulsos es ptime
      * separados
 	 *
@@ -84,6 +186,7 @@ uint16_t steps;
         vTaskDelay( ( TickType_t)( ptime / portTICK_PERIOD_MS ) );
         xprintf_P(PSTR("p(%d) %03d,\r\n"), phase, steps);
 	}
+ 
 	// Desactivo el driver
 	DRV8814_sleep();
 }

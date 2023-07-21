@@ -12,6 +12,9 @@
 extern "C" {
 #endif
 
+#include "FreeRTOS.h"
+#include "task.h"
+    
 #include "frtos-io.h"
 #include "stdint.h"
 #include "xprintf.h"
@@ -87,6 +90,7 @@ typedef struct {
 void modbus_update_local_config( modbus_conf_t *modbus_system_conf);
 void modbus_read_local_config( modbus_conf_t *modbus_system_conf);
 
+void modbus_init_outofrtos( SemaphoreHandle_t semph);
 void modbus_init( int fd_modbus, int buffer_size, void (*f)(void), uint16_t (*g)(void), char *(*h)(void)  );
 
 void modbus_config_debug(bool debug );

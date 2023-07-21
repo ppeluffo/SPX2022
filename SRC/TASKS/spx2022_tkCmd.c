@@ -46,9 +46,7 @@ uint8_t c = 0;
     
     xprintf_P(PSTR("Starting tkCmd..\r\n" ));
     xprintf_P(PSTR("Spymovil %s %s %s %s \r\n") , HW_MODELO, FRTOS_VERSION, FW_REV, FW_DATE);
-    
-    //sleep_timeout = 1500; // Espero hasta 30s secs
-    
+      
 	// loop
 	for( ;; )
 	{
@@ -59,21 +57,11 @@ uint8_t c = 0;
 		//while ( frtos_read( fdTERM, (char *)&c, 1 ) == 1 ) {
         while ( xgetc( (char *)&c ) == 1 ) {
             FRTOS_CMD_process(c);
-            //sleep_timeout = 1500;
         }
         
         // Espero 10ms si no hay caracteres en el buffer
         vTaskDelay( ( TickType_t)( 10 / portTICK_PERIOD_MS ) );
-        
-        // Luego de 30 secs de inactividad, duermo 20 secs
-        /*
-        if ( sleep_timeout-- == 0 ) {
-            //xprintf_P(PSTR("Going to sleep\r\n"));
-            vTaskDelay( ( TickType_t)( 20000 / portTICK_PERIOD_MS ) );
-            sleep_timeout = 1;
-        }
-         */ 
-        
+               
 	}    
 }
 //------------------------------------------------------------------------------
@@ -796,12 +784,7 @@ bool retS = false;
 
 	// SAVE
 	// config save
-	if (!strcmp_P( strupr(argv[1]), PSTR("SAVE"))) {
-        ainputs_read_local_config(&systemConf.ainputs_conf);
-        counters_read_local_config(&systemConf.counters_conf);
-        modbus_read_local_config(&systemConf.modbus_conf);
-        piloto_read_local_config(&systemConf.piloto_conf);
-        
+	if (!strcmp_P( strupr(argv[1]), PSTR("SAVE"))) {       
 		save_config_in_NVM();
 		pv_snprintfP_OK();
 		return;

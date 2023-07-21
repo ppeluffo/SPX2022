@@ -23,8 +23,9 @@ void check_alarms(dataRcd_s *dataRcd);
 void tkSystem(void * pvParameters)
 {
 
-TickType_t xLastWakeTime = 0;
+//TickType_t xLastWakeTime = 0;
 uint32_t waiting_ticks;
+uint8_t i;
 
 	while (! starting_flag )
 		vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
@@ -36,7 +37,7 @@ uint32_t waiting_ticks;
     
     ainputs_init(systemConf.samples_count);
     
-    xLastWakeTime = xTaskGetTickCount();
+//    xLastWakeTime = xTaskGetTickCount();
     // Espero solo 10s para el primer poleo ( no lo almaceno !!)
     vTaskDelay( ( TickType_t)( 10000 / portTICK_PERIOD_MS ) );
     poll_data(&dataRcd);
@@ -46,9 +47,15 @@ uint32_t waiting_ticks;
 	{
         kick_wdt(SYS_WDG_bp);
         // Espero timerpoll ms.
-        waiting_ticks = (uint32_t)systemConf.timerpoll * 1000 / portTICK_PERIOD_MS;
-		vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( waiting_ticks ));
+        //waiting_ticks = (uint32_t)systemConf.timerpoll * 1000 / portTICK_PERIOD_MS;
+        //vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( waiting_ticks ));
         
+        waiting_ticks = (uint32_t)systemConf.timerpoll * 1000 / portTICK_PERIOD_MS / 10;
+        for (i=0; i< 10; i++) {
+            kick_wdt(SYS_WDG_bp);
+            vTaskDelay( ( TickType_t)( waiting_ticks ) );
+        }
+           
         // Leo datos
         poll_data(&dataRcd); 
         // Proceso ( transmito o almaceno) frame de datos por la WAN
@@ -123,6 +130,8 @@ uint16_t raw;
 bool retS = false;
 
     // Prendo los sensores
+    AINPUTS_ENTER_CRITICAL();
+
     ainputs_prender_sensores();
                 
     // los valores publicados en el systemVars los leo en variables locales.
@@ -147,7 +156,8 @@ bool retS = false;
     
     // Apago los sensores
     ainputs_apagar_sensores();
-        
+    AINPUTS_EXIT_CRITICAL();    
+    
     // Leo el valor de los contadores
     counters_read( systemVars.counters );
     counters_convergencia();

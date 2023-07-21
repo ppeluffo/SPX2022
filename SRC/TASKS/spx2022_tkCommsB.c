@@ -27,8 +27,6 @@ wan_port_t wan_port;
     while ( ! starting_flag )
         vTaskDelay( ( TickType_t)( 100 / portTICK_PERIOD_MS ) );
 
-	//vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
-
     lBchar_CreateStatic ( &commsB_lbuffer, rs485B_buffer, RS485B_BUFFER_SIZE );
     
     xprintf_P(PSTR("Starting tkRS485B..\r\n" ));

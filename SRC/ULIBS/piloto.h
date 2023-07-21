@@ -45,6 +45,8 @@ typedef struct {
 } piloto_conf_t;
 
 
+void piloto_init_outofrtos( SemaphoreHandle_t semph);
+
 void piloto_update_local_config( piloto_conf_t *piloto_system_conf);
 void piloto_read_local_config( piloto_conf_t *piloto_system_conf);
 

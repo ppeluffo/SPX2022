@@ -1,42 +1,38 @@
 
 #include "piloto.h"
-#include "ringBuffer.h"
-//#include "spx2022.h"
 #include <stdio.h>
 
 // Configurar ch_pA, ch_pB x cmd y por WAN
 
-typedef struct {
-	float presion;
-} s_pltRb_t;
 
-#define PILOTO_STORAGE_SIZE 5
+float consigna;
 
-s_pltRb_t pRB_storage[PILOTO_STORAGE_SIZE];
-rBstruct_s pRBuff;
+#define INTERVALO_ENTRE_MUESTRAS_SECS 5
+#define NRO_MUESTRAS    5
+#define MAX_INTENTOS_AJUSTE 5
+#define DPRES_X_REV				0.500		// 500 gr c/rev del piloto
 
-#define INTERVALO_ENTRE_MEDIDAS_SECS 5
-
-static bool f_debug_piloto = true;
+static bool f_debug_piloto = false;
 
 struct {
-	int16_t pulsos_calculados;
-	int16_t pulsos_a_aplicar;
-	int16_t total_pulsos_rollback;
-	int16_t pulse_counts;
-	uint16_t pwidth;
-	t_stepper_dir dir;
+//	int16_t pulsos_calculados;
+//	int16_t pulsos_a_aplicar;
+//	int16_t total_pulsos_rollback;
 
-	float pRef;
-	float pA;
-	float pB;
-	float pError;
-	bool motor_running;
+//	uint16_t pwidth;
+
+//	float pError;
+//	bool motor_running;
+    
 	uint8_t loops;
     uint8_t ch_pA;
     uint8_t ch_pB;
-
-
+	float pRef;
+	float pA;
+	float pB;
+	t_stepper_dir dir;
+    uint32_t steps;
+    
 } PLTCB;	// Piloto Control Block
 
 typedef enum { PLT_READ_INPUTS = 0, PLT_CHECK_CONDITIONS4ADJUST, PLT_AJUSTE, PLT_PROCESS_OUTPUT, PLT_EXIT } t_plt_states;
@@ -44,19 +40,40 @@ typedef enum { PLT_READ_INPUTS = 0, PLT_CHECK_CONDITIONS4ADJUST, PLT_AJUSTE, PLT
 //Configuracion local del sistema de pilotos
 piloto_conf_t piloto_conf;
 
-bool piloto_leer_slot_actual( int8_t *slot_id );
-bool FSM_ajuste_presion( float presion );
+int8_t piloto_leer_slot_actual( void );
+bool FSM_ajuste_presion( void );
 void plt_read_inputs( int8_t samples, uint16_t intervalo_secs );
+bool plt_condiciones_para_ajustar(void);
+void plt_ajustar_presion(void);
 
+static SemaphoreHandle_t pilotoLocalSemph;
+
+//------------------------------------------------------------------------------
+void piloto_init_outofrtos( SemaphoreHandle_t semph)
+{
+    pilotoLocalSemph = semph;
+    
+    stepper_init_outofrtos();
+}
 // -----------------------------------------------------------------------------
 void piloto_update_local_config( piloto_conf_t *piloto_system_conf)
 {
-    memcpy( piloto_system_conf, &piloto_conf, sizeof(piloto_conf_t));
+    
+    while ( xSemaphoreTake( pilotoLocalSemph, ( TickType_t ) 5 ) != pdTRUE )
+  		vTaskDelay( ( TickType_t)( 1 ) );
+        
+    memcpy( &piloto_conf, piloto_system_conf, sizeof(piloto_conf_t));
+    xSemaphoreGive( pilotoLocalSemph );
 }
 // -----------------------------------------------------------------------------
 void piloto_read_local_config( piloto_conf_t *piloto_system_conf)
 {
-    memcpy( &piloto_conf, piloto_system_conf, sizeof(piloto_conf_t)); 
+
+    while ( xSemaphoreTake( pilotoLocalSemph, ( TickType_t ) 5 ) != pdTRUE )
+  		vTaskDelay( ( TickType_t)( 1 ) );
+    
+    memcpy( piloto_system_conf, &piloto_conf, sizeof(piloto_conf_t)); 
+    xSemaphoreGive( pilotoLocalSemph );
 }
 //------------------------------------------------------------------------------
 bool piloto_configurado(void)
@@ -74,13 +91,7 @@ void piloto_init(void)
      * Usamos un ringbuffer como estructura para almacenar los pedidos de
      * ajustes de presión.
      */
-    rBstruct_CreateStatic ( 
-        &pRBuff,
-        &pRB_storage, 
-        PILOTO_STORAGE_SIZE,
-        sizeof(s_pltRb_t), 
-        true  
-    );
+    consigna = -1;
     
 }
 //------------------------------------------------------------------------------
@@ -112,68 +123,81 @@ void piloto_consumidor(void)
 	 * con esta accion pendiente.
 	 */
 
-s_pltRb_t jobOrder;
-float presion;
-bool borrar_request = false;
-
     if (f_debug_piloto) {
         xprintf_P( PSTR("PILOTO CONS: start.\r\n"));
     }
-
-	// No hay datos en la FIFO
-	if ( rBstruct_GetCount(&pRBuff) == 0 ) {
-		goto quit;
-	}     
-
-    // Saco un elemento de la FIFO sin borrarlo aún
-    rBstruct_PopRead(&pRBuff, &jobOrder);
-    presion = jobOrder.presion;
+ 
+	if ( consigna > 0 ) { 
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO CONS: new_press=%0.2f.\r\n"), consigna);
+        }
     
-    if (f_debug_piloto) {
-        xprintf_P( PSTR("PILOTO CONS: new_press=%0.2f.\r\n"), presion);
+        // Ajuste de presion
+        FSM_ajuste_presion();
+    
+        // Borro el request.
+        consigna = -1;
     }
     
-    // Ajuste de presion
-    borrar_request = FSM_ajuste_presion(presion);
-    
-    // Borro el elemento de la FIFO si pude ejecutar el handler
-	if ( borrar_request ) {
-		rBstruct_Pop(&pRBuff, &jobOrder );
-	}
- 
-quit:
-
     if (f_debug_piloto) {
         xprintf_P( PSTR("PILOTO CONS: end.\r\n"));
     }
     return;
 }
 //------------------------------------------------------------------------------
-bool FSM_ajuste_presion( float presion)
+bool FSM_ajuste_presion( void )
 {
     /*
      * Maquira de estados que ajsuta la presion
      */
     
-uint8_t state = PLT_READ_INPUTS;
+uint8_t state;
 
-    PLTCB.pRef = presion;
+    PLTCB.pRef = consigna;
     PLTCB.loops = 0;
     PLTCB.ch_pA = piloto_conf.ch_pA;
     PLTCB.ch_pB = piloto_conf.ch_pB;
     
-    switch(state) {
-    case PLT_READ_INPUTS:
-        // Leo las entradas
-        if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste: state READ_INPUTS\r\n"));
-			// Espero siempre 30s antes para que se estabilizen. Sobre todo en valvulas grandes
-			xprintf_P( PSTR("PILOTO FSMajuste: await 30s\r\n"));
+    state = PLT_READ_INPUTS;
+    
+    while( true ) {
+        
+        vTaskDelay( ( TickType_t) (100 / portTICK_PERIOD_MS ) );
+        
+        switch(state) {
+
+            case PLT_READ_INPUTS:
+                // Leo las entradas
+                if (f_debug_piloto) {
+                    xprintf_P( PSTR("PILOTO FSMajuste: state READ_INPUTS\r\n"));
+                    // Espero siempre 30s antes para que se estabilizen. Sobre todo en valvulas grandes
+                    xprintf_P( PSTR("PILOTO FSMajuste: await 30s\r\n"));
+                }
+                vTaskDelay( ( TickType_t) (30000 / portTICK_PERIOD_MS ) );
+                plt_read_inputs( NRO_MUESTRAS, INTERVALO_ENTRE_MUESTRAS_SECS );
+                state = PLT_CHECK_CONDITIONS4ADJUST;
+                break;
+        
+            case PLT_CHECK_CONDITIONS4ADJUST: 
+                // Vemos si la consigna y las entradas son compatibles para empezar
+                // a ajustar.
+                if ( plt_condiciones_para_ajustar()) {
+                    state = PLT_AJUSTE;
+                } else {
+                    // No hay condiciones de ajuste: salgo
+                    return(false);
+                }
+            break;
+        
+            case PLT_AJUSTE:
+                plt_ajustar_presion();
+                state = PLT_READ_INPUTS;
+                break;
+            
+            default:
+                xprintf_P(PSTR("PILOTO FSM STATE ERROR: Reset FSM\r\n"));
+                return (false);
         }
-		vTaskDelay( ( TickType_t) (30000 / portTICK_PERIOD_MS ) );
-		plt_read_inputs(5, INTERVALO_ENTRE_MEDIDAS_SECS );
-		state = PLT_CHECK_CONDITIONS4ADJUST;
-        break;
     }
    
     return(false);
@@ -195,6 +219,9 @@ uint16_t raw;
 	// Mido pA/pB
 	PLTCB.pA = 0;
 	PLTCB.pB = 0;
+   
+    
+    AINPUTS_ENTER_CRITICAL();
     
     ainputs_prender_sensores();
     
@@ -217,6 +244,8 @@ uint16_t raw;
     
     ainputs_apagar_sensores();
 
+    AINPUTS_EXIT_CRITICAL();
+    
 	PLTCB.pA /= samples;
 	PLTCB.pB /= samples;
     if (f_debug_piloto) {
@@ -224,7 +253,125 @@ uint16_t raw;
     }
     
 }
-//------------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+bool plt_condiciones_para_ajustar(void)
+{
+    /*
+     * Revisa si las condiciones permiten ajsutar al piloto
+     */
+    if (f_debug_piloto) {
+        xprintf_P(PSTR("PILOTO FSMajuste: pA=%0.3f\r\n"),PLTCB.pA);
+        xprintf_P(PSTR("                  pB=%0.3f\r\n"),PLTCB.pB);
+        xprintf_P(PSTR("                  pRef=%0.3f\r\n"),PLTCB.pRef);
+        xprintf_P(PSTR("                  loops=%d\r\n"),PLTCB.loops);
+    }
+    
+    if ( PLTCB.loops >= MAX_INTENTOS_AJUSTE ) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO FSMajuste_cond: Max.intentos !!\r\n"));
+        }
+        return (false);
+    }
+            
+    if ( PLTCB.pA <= 0) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO FSMajuste_cond: pA < 0 !!\r\n"));
+        }
+        return (false);
+    }
+
+    if ( PLTCB.pRef > PLTCB.pA ) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO FSMajuste_cond: pRef > pA !!\r\n"));
+        }
+        return(false);
+    }
+    
+    if ( PLTCB.pRef <= 0 ) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO FSMajuste_cond: pRef < 0 !!\r\n"));
+        }
+        return (false);
+    }
+    
+    if ( fabs(PLTCB.pA - PLTCB.pRef) < 0.2 ) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO FSMajuste_cond: abs(pA-pRef)<0.2 !!\r\n"));
+        }
+        return(false);
+    }
+    
+    if ( fabs( PLTCB.pB - PLTCB.pRef) < 0.2) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO FSMajuste_cond: abs(pB-pRef)<0.2 !!\r\n"));
+        }
+        return(false);
+    }
+    
+    // Si tengo que subir la presion y el FCsuperior == 0 no puedo.
+    // FC1 es alta
+    if ( (PLTCB.pRef > PLTCB.pB) && (FC1_read() == 0) ) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO FSMajuste_cond: FC1=0 !!\r\n"));
+        }
+        return(false);
+    }
+    
+    // Si tengo que bajar la presion y FCinferior == 0, no puedo
+    // FC2 es baja
+    if ( (PLTCB.pRef < PLTCB.pB) && (FC2_read() == 0 ) ) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO FSMajuste_cond: FC2=0 !!\r\n"));
+        }
+        return(false);
+    }
+    
+    return(true);
+}
+//------------------------------------------------------------------------------
+void plt_ajustar_presion(void)
+{
+    /*
+     * Calculamos los parametros de ajuste: direccion, pulsos
+     */
+    
+float delta_pres = 0.0;
+
+	if ( PLTCB.pB < PLTCB.pRef ) {
+		// Debo aumentar pB o sxprintf_P(PSTR("PILOTO: npulses=%d\r\n"), spiloto.npulses);ea apretar el tornillo (FWD)
+		PLTCB.dir = STEPPER_FWD; // Giro forward, aprieto el tornillo, aumento la presion de salida
+	} else {
+		PLTCB.dir = STEPPER_REV;
+	}
+
+	/*
+	 * Calculo los pulsos a aplicar.
+	 * El motor es de 200 pasos /rev
+	 * El servo reduce 15:1
+	 * Esto hace que para girar el vastago 1 rev necesite 3000 pulsos
+	 * El piloto es de 4->1500gr.
+	 */
+
+	delta_pres = fabs(PLTCB.pB - PLTCB.pRef);
+	PLTCB.steps = (uint32_t)( delta_pres * piloto_conf.pulsesXrev / DPRES_X_REV  );
+    if (f_debug_piloto) {
+        xprintf_P(PSTR("PILOTO AJUSTE: steps_calculados=%d\r\n"), PLTCB.steps);
+    }
+    
+    // No giro mas de 1rev por intento
+    if ( PLTCB.steps > piloto_conf.pulsesXrev) {
+        PLTCB.steps = piloto_conf.pulsesXrev;
+    }   
+    if (f_debug_piloto) {
+        xprintf_P(PSTR("PILOTO AJUSTE: steps_a_aplicar=%d\r\n"), PLTCB.steps);
+    }
+    
+    PLTCB.loops++;
+    stepper_move( PLTCB.dir, PLTCB.steps, piloto_conf.pWidth, 25 );
+    
+}
+//------------------------------------------------------------------------------
+
 /*
  Handlers de Productor
  */
@@ -238,36 +385,34 @@ void piloto_productor_handler_slots(void)
      * 
      */
     
-static int8_t slot_now = -1;
-int8_t slot_next = -1;
-float presion;
-s_pltRb_t jobOrder;
+static int8_t slot0 = -1;
+int8_t slot_now = -1;
 
     if (f_debug_piloto) {
         xprintf_P(PSTR("PILOTO PROD: start.\r\n"));
     }
-	//xprintf_P(PSTR("PILOTO: SLOTS_A: slot_actual=%d, slot=%d\r\n"), slot_actual, slot );
-	if ( piloto_leer_slot_actual( &slot_next ) ) {
-        if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO PROD: SLOTS slot_now=%d, slot_next=%d\r\n"), slot_now, slot_next );
-		}
-        // Cambio el slot. ?
-		if ( slot_now != slot_next ) {
-			slot_now = slot_next;
-            presion = piloto_conf.pltSlots[slot_now].presion;
-           
-			// Un nuevo slot borra todo lo anterior.
-			rBstruct_Flush(&pRBuff);
 
-			// Guardo la presion en la cola FIFO.
-            jobOrder.presion = presion;
-            rBstruct_Poke(&pRBuff, &jobOrder );
+    slot_now = piloto_leer_slot_actual();
+    if ( slot_now < 0 ) {
+        xprintf_P(PSTR("PILOTO PROD: Error slot now !!\r\n"));
+        goto quit;
+    }
     
-            if (f_debug_piloto) {
-                xprintf_P(PSTR("PILOTO PROD: Cambio de slot: %d=>%d, pRef=%.03f\r\n"), slot_now, slot_next, presion);
-            }
+    if (f_debug_piloto) {
+        xprintf_P( PSTR("PILOTO PROD: SLOTS slot0=%d, slot_now=%d\r\n"), slot0, slot_now );
+    }
+        
+    // Cambio el slot. ?
+	if ( slot_now != slot0 ) {
+        consigna = piloto_conf.pltSlots[slot_now].presion;
+        if (f_debug_piloto) {
+            xprintf_P(PSTR("PILOTO PROD: Cambio de slot: %d=>%d, pRef=%.03f\r\n"), slot0, slot_now, consigna);
 		}
+		slot0 = slot_now;
 	}
+    
+quit:
+        
     if (f_debug_piloto) {
         xprintf_P(PSTR("PILOTO PROD: end.\r\n"));    
     }
@@ -280,16 +425,9 @@ void piloto_productor_handler_online( float presion)
      * de actuar sobre la presion.
      */
     
-s_pltRb_t jobOrder;
-
 	xprintf_P(PSTR("PILOTO PROD: onlineOrder (p=%0.2f).\r\n"), presion);
-	jobOrder.presion = presion;
-    
-    // Un nuevo slot borra todo lo anterior.
-	rBstruct_Flush(&pRBuff);
-    
-	rBstruct_Poke(&pRBuff, &jobOrder );
-    
+	consigna = presion;
+      
 }
 //------------------------------------------------------------------------------
 void piloto_productor_handler_cmdline( float presion)
@@ -298,16 +436,9 @@ void piloto_productor_handler_cmdline( float presion)
      * Se invoca desde el cmdline.( para testing )
      * 
      */
-  
-s_pltRb_t jobOrder;
 
 	xprintf_P(PSTR("PILOTO PROD: cmdlineOrder (p=%0.2f).\r\n"), presion);
-	jobOrder.presion = presion;
-    
-    // Un nuevo slot borra todo lo anterior.
-	rBstruct_Flush(&pRBuff);
-    
-	rBstruct_Poke(&pRBuff, &jobOrder );
+	consigna = presion;
         
 }
 //------------------------------------------------------------------------------
@@ -320,6 +451,7 @@ bool piloto_cmd_set_presion(char *s_presion)
      */
 
 float presion = atof(s_presion);
+
     piloto_productor_handler_cmdline(presion);
     return (true);
 }
@@ -464,60 +596,71 @@ uint8_t hash_buffer[64];
     return(hash);
 }
 //------------------------------------------------------------------------------
-bool piloto_leer_slot_actual( int8_t *slot_id )
+int8_t piloto_leer_slot_actual( void )
 {
 	// Determina el id del slot en que estoy.
 	// Los slots deben tener presion > 0.1
 
 RtcTimeType_t rtcDateTime;
 uint16_t now;
-int8_t last_slot;
-int8_t slot;
-uint16_t slot_start_time;
+int8_t slot_actual = -1;
+int8_t ultimo_slot;
+int8_t i;
 
 	// Vemos si hay slots configuradas.
 	// Solo chequeo el primero. DEBEN ESTAR ORDENADOS !!
 	if ( piloto_conf.pltSlots[0].presion < 0.1 ) {
 		// No tengo slots configurados. !!
-		return(false);
+		return(-1);
 	}
 
 	// Determino la hhmm actuales
 	memset( &rtcDateTime, '\0', sizeof(RtcTimeType_t));
 	if ( ! RTC_read_dtime(&rtcDateTime) ) {
 		xprintf_P(PSTR("PILOTO ERROR: I2C:RTC:pv_get_hhhmm_now\r\n\0"));
-		return(false);
+		return(-1);
 	}
 	now = rtcDateTime.hour * 100 + rtcDateTime.min;
 
-	// Hay slots configurados:
-	// El ultimo slot configurado es anterior al primero en tener p=0
-	last_slot = MAX_PILOTO_PSLOTS - 1;
-	for ( slot = 1; slot < MAX_PILOTO_PSLOTS; slot++ ) {
-		if ( piloto_conf.pltSlots[slot].presion < 0.1 ) {
-			last_slot = slot - 1;
-			break;
-		}
-	}
-
-	// Buscamos dentro de que slot se encuentra now.
-	*slot_id = last_slot;
-	for ( slot = 0; slot <= last_slot; slot++ ) {
-		slot_start_time = piloto_conf.pltSlots[slot].pTime;
-
-		// Chequeo inside
-		if ( now < slot_start_time ) {
-			// Si estoy al ppio.
-			if ( slot == 0 ) {
-					*slot_id = last_slot;
-			// Estoy en un slot comun
-			} else {
-				*slot_id = slot - 1;
-			}
-			break;
-		}
-	}
-	return(true);
+    while ( xSemaphoreTake( pilotoLocalSemph, ( TickType_t ) 5 ) != pdTRUE )
+  		vTaskDelay( ( TickType_t)( 1 ) );
+    
+    // Busco el ultimo slot configurado
+    ultimo_slot = 0;
+    for ( i=0; i < MAX_PILOTO_PSLOTS; i++ ) {
+        if ( piloto_conf.pltSlots[i].presion > 0.1 ) {
+            ultimo_slot = i;
+        }
+    }
+    
+    // Busco el slot actual
+    // Caso 1: Estoy antes que empieza el slot 0
+    if ( now <= piloto_conf.pltSlots[0].pTime ) {
+        // El slot es el ultimo configurado
+        slot_actual = ultimo_slot;
+        goto quit;
+    }
+    
+    // Caso 2: 
+    for ( i=0; i < ultimo_slot; i++ ) {
+        if ( piloto_conf.pltSlots[i].presion > 0.1 ) {
+            if ( ( piloto_conf.pltSlots[i].pTime <= now ) && ( now < piloto_conf.pltSlots[i+1].pTime ) ) {
+                slot_actual = i;
+                goto quit;
+            } 
+        }
+    }
+    
+    // Estoy en el ultimo slot
+    slot_actual = ultimo_slot;
+    
+quit:
+        
+    xSemaphoreGive( pilotoLocalSemph );
+    if (f_debug_piloto) {
+        xprintf_P(PSTR("PILOTO: Slot actual=%d\r\n"), slot_actual);
+    }
+    return(slot_actual);    
 
 }     
     //------------------------------------------------------------------------------

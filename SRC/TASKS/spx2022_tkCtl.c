@@ -8,7 +8,7 @@
 
 #include "spx2022.h"
 
-#define TKCTL_DELAY_S	5
+#define TKCTL_DELAY_S	1
 
 void sys_watchdog_check(void);
 void sys_daily_reset(void);
@@ -25,16 +25,19 @@ fat_s l_fat;
 	vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
     xprintf_P(PSTR("Starting tkCtl..\r\n"));
     
-    // Leo la configuracion 
+    // Leo la configuracion de EE en systemConf
     if ( ! load_config_from_NVM())  {
        xprintf_P(PSTR("Loading config default..\r\n"));
        config_default();
     }
        
+    // Actualizo las configuraciones locales en el systemConf
     ainputs_update_local_config(&systemConf.ainputs_conf);
     counters_update_local_config(&systemConf.counters_conf);
     modbus_update_local_config(&systemConf.modbus_conf);
-    piloto_read_local_config(&systemConf.piloto_conf);
+#ifdef PILOTO
+    piloto_update_local_config(&systemConf.piloto_conf);
+#endif
     
     WDG_INIT();
     //WDT_init();
@@ -65,8 +68,8 @@ fat_s l_fat;
     
 	for( ;; )
 	{
-        vTaskDelay( ( TickType_t)( 5000 / portTICK_PERIOD_MS ) );
-		//vTaskDelay( ( TickType_t)( 1000 * TKCTL_DELAY_S / portTICK_PERIOD_MS ) );
+        //vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
+		vTaskDelay( ( TickType_t)( 1000 * TKCTL_DELAY_S / portTICK_PERIOD_MS ) );
         led_flash();
         sys_watchdog_check();
         sys_daily_reset();
@@ -83,24 +86,26 @@ void sys_watchdog_check(void)
 static uint8_t wdg_count = 0;
 
     //xprintf_P(PSTR("wdg reset\r\n"));
-    wdt_reset();
+    //wdt_reset();
     return;
         
-    // EL wdg lo leo cada 300secs ( 5 x 60 )
-    if ( wdg_count++ < 60 ) {
+    // EL wdg lo leo cada 120secs ( 5 x 60 )
+    if ( wdg_count++ <  (240 / TKCTL_DELAY_S ) ) {
         wdt_reset();
         return;
     }
     
-
-    // Analizo los watchdows individuales
+    xprintf_P(PSTR("DEBUG: wdg check\r\n"));
     wdg_count = 0;
+    
+    // Analizo los watchdows individuales
     //xprintf_P(PSTR("tkCtl: check wdg [0x%02X]\r\n"), sys_watchdog );
 
     if ( sys_watchdog != 0 ) {  
         xprintf_P(PSTR("tkCtl: reset by wdg [0x%02X]\r\n"), sys_watchdog );
         vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
         reset();
+        
     } else {
         wdt_reset();
         WDG_INIT();

@@ -1,18 +1,18 @@
 /* 
- * File:   counters.h
+ * File:   contadores.h
  * Author: pablo
  *
- * Created on 15 de septiembre de 2022, 04:46 PM
+ * Created on July 19, 2023, 5:04 PM
  */
 
-#ifndef COUNTERS_H
-#define	COUNTERS_H
+#ifndef CONTADORES_H
+#define	CONTADORES_H
 
 #ifdef	__cplusplus
 extern "C" {
 #endif
 
-    
+
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -26,8 +26,10 @@ extern "C" {
 #include "math.h"
     
 #include "xprintf.h"
-#include "ringBuffer.h"
-    
+#include "ina3221.h"    
+#include "pines.h"
+#include "utils.h"
+
 #define CNT0_PORT	PORTE
 #define CNT0_PIN    6   
 #define CNT0_PIN_bm	PIN6_bm
@@ -63,7 +65,7 @@ typedef struct {
     counter_channel_conf_t channel[NRO_COUNTER_CHANNELS];
 } counters_conf_t;
 
-//void counters_init_outofrtos( SemaphoreHandle_t semph);
+void counters_init_outofrtos( SemaphoreHandle_t semph);
 void counters_update_local_config( counters_conf_t *counters_system_conf);
 void counters_read_local_config( counters_conf_t *counters_system_conf);
 void counters_init( void );
@@ -87,5 +89,5 @@ void counters_test_rb(char *data);
 }
 #endif
 
-#endif	/* COUNTERS_H */
+#endif	/* CONTADORES_H */
 

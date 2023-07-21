@@ -82,7 +82,7 @@ extern "C" {
 #include "pines.h"
 #include "linearBuffer.h"
 #include "fileSystem.h"
-#include "counters.h"
+#include "contadores.h"
 #include "ainputs.h"
 #include "modbus.h"
 #include "drv8814.h"
@@ -90,9 +90,8 @@ extern "C" {
 #include "valves.h"
 #include "piloto.h"
 
-
 #define FW_REV "1.1.0"
-#define FW_DATE "@ 20230713"
+#define FW_DATE "@ 20230721"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR3"
@@ -115,7 +114,7 @@ extern "C" {
 #define tkWAN_STACK_SIZE		384
 #define tkPILOTO_STACK_SIZE		384
 
-//#define PILOTO
+#define PILOTO
 
 StaticTask_t tkCtl_Buffer_Ptr;
 StackType_t tkCtl_Buffer [tkCtl_STACK_SIZE];
@@ -200,6 +199,7 @@ bool config_samples ( char *s_samples );
 bool config_almlevel ( char *s_almlevel );
 void debug_print_rb(void);
 void reset_memory_remote(void);
+uint8_t confbase_hash(void);
 
 
 #define WAN_RX_BUFFER_SIZE 300
@@ -264,9 +264,9 @@ uint8_t sys_watchdog;
 #define XCMA_WDG_bp   2
 #define XCMB_WDG_bp   3
 #define XWAN_WDG_bp   4
-#define PLT_WDG_bp    5
+#define PLT_WDG_bp    5 // No habilitado
 
-#define WDG_bm 0x3F
+#define WDG_bm 0x1F 
 
 #define WDG_INIT() ( sys_watchdog = WDG_bm )
 

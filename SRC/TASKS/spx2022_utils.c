@@ -98,6 +98,9 @@ void kick_wdt( uint8_t bit_pos)
 void config_default(void)
 {
 
+    // Configuro a default todas las configuraciones locales
+    // y luego actualizo el systemConf
+    
     systemConf.wan_port = WAN_RS485B;
     memcpy(systemConf.dlgid, "DEFAULT\0", sizeof(systemConf.dlgid));
     
@@ -111,10 +114,24 @@ void config_default(void)
     systemConf.pwr_hhmm_on = 2330;
     systemConf.pwr_hhmm_off = 630;
  
+    // Actualizo las configuraciones locales a default
     ainputs_config_defaults();
     counters_config_defaults();
     modbus_config_defaults();
+    
+#ifdef PILOTO
     piloto_config_defaults();
+#endif
+    
+    // Actualizo las configuraciones locales en el systemConf
+    ainputs_read_local_config(&systemConf.ainputs_conf);
+    counters_read_local_config(&systemConf.counters_conf);
+    modbus_read_local_config(&systemConf.modbus_conf);
+    
+#ifdef PILOTO
+    piloto_read_local_config(&systemConf.piloto_conf);
+#endif
+    
 }
 //------------------------------------------------------------------------------
 bool config_debug( char *tipo, char *valor)
@@ -528,3 +545,71 @@ bool config_almlevel ( char *s_almlevel )
 	return(true);
 }
 //------------------------------------------------------------------------------
+uint8_t confbase_hash(void)
+{
+   
+uint8_t hash_buffer[32];
+uint8_t hash = 0;
+char *p;
+
+    // Calculo el hash de la configuracion base
+    memset(hash_buffer, '\0', sizeof(hash_buffer));
+    sprintf_P( (char *)&hash_buffer, PSTR("[TIMERPOLL:%03d]"), systemConf.timerpoll );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', sizeof(hash_buffer));
+    sprintf_P( (char *)&hash_buffer, PSTR("[TIMERDIAL:%03d]"), systemConf.timerdial );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );    
+    //
+    memset(hash_buffer, '\0', sizeof(hash_buffer));
+    sprintf_P( (char *)&hash_buffer, PSTR("[PWRMODO:%d]"), systemConf.pwr_modo );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', sizeof(hash_buffer));
+    sprintf_P( (char *)&hash_buffer, PSTR("[PWRON:%04d]"), systemConf.pwr_hhmm_on );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', sizeof(hash_buffer));
+    sprintf_P( (char *)&hash_buffer, PSTR("[PWROFF:%04d]"), systemConf.pwr_hhmm_off );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', sizeof(hash_buffer));
+    sprintf_P( (char *)&hash_buffer, PSTR("[SAMPLES:%02d]"), systemConf.samples_count );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    //
+    memset(hash_buffer, '\0', sizeof(hash_buffer));
+    sprintf_P( (char *)&hash_buffer, PSTR("[ALMLEVEL:%02d]"), systemConf.alarm_level );
+    p = (char *)hash_buffer;
+    while (*p != '\0') {
+		hash = u_hash(hash, *p++);
+	}  
+    //xprintf_P(PSTR("HASH_BASE:<%s>, hash=%d\r\n"),hash_buffer, hash );
+    
+    return(hash);
+}
+//------------------------------------------------------------------------------
+

@@ -26,13 +26,34 @@ static uint8_t max_rb_ain_storage_size;
 // Configuracion local del sistema analogico
 ainputs_conf_t ainputs_conf;
 
+static SemaphoreHandle_t ainputsLocalSem;
+
+// Semafor para acceder a medir los canales ( ainputs y pilotos )
+SemaphoreHandle_t sem_AINPUTS;
+StaticSemaphore_t AINPUTS_xMutexBuffer;
+
+//------------------------------------------------------------------------------
+void ainputs_init_outofrtos( SemaphoreHandle_t semph)
+{
+    /*
+     * Asignamos el semaforo para acceder a la configuracion y
+     * creo el semaforo local para acceder a medida de los canales.
+     */
+    
+    ainputsLocalSem = semph;
+    
+    sem_AINPUTS = xSemaphoreCreateMutexStatic( &AINPUTS_xMutexBuffer );
+}
 //------------------------------------------------------------------------------
 void ainputs_update_local_config( ainputs_conf_t *ainputs_system_conf)
 {
     /*
      * Copia la configuracion del systemConf en la local
      */
-    memcpy( ainputs_system_conf, &ainputs_conf, sizeof(ainputs_conf_t));
+    while ( xSemaphoreTake( ainputsLocalSem, ( TickType_t ) 5 ) != pdTRUE )
+  		vTaskDelay( ( TickType_t)( 1 ) );
+    memcpy( &ainputs_conf, ainputs_system_conf , sizeof(ainputs_conf_t));
+    xSemaphoreGive( ainputsLocalSem );
 }
 //------------------------------------------------------------------------------
 void ainputs_read_local_config( ainputs_conf_t *ainputs_system_conf)
@@ -40,7 +61,10 @@ void ainputs_read_local_config( ainputs_conf_t *ainputs_system_conf)
     /*
      * Copia la configuracion local en el systemConf
      */
-    memcpy( &ainputs_conf, ainputs_system_conf, sizeof(ainputs_conf_t));
+    while ( xSemaphoreTake( ainputsLocalSem, ( TickType_t ) 5 ) != pdTRUE )
+  		vTaskDelay( ( TickType_t)( 1 ) );
+    memcpy( ainputs_system_conf, &ainputs_conf, sizeof(ainputs_conf_t));
+    xSemaphoreGive( ainputsLocalSem );
 }
 //------------------------------------------------------------------------------    
 void ainputs_init(uint8_t samples_count)
@@ -489,3 +513,15 @@ char *p;
     return(hash);
     
 }
+//------------------------------------------------------------------------------
+void AINPUTS_ENTER_CRITICAL(void)
+{
+    while ( xSemaphoreTake( sem_AINPUTS, ( TickType_t ) 5 ) != pdTRUE )
+  		vTaskDelay( ( TickType_t)( 10 ) );   
+}
+//------------------------------------------------------------------------------
+void AINPUTS_EXIT_CRITICAL(void)
+{
+    xSemaphoreGive( sem_AINPUTS );
+}
+//------------------------------------------------------------------------------

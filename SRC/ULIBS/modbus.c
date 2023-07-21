@@ -1,6 +1,4 @@
 
-
-
 #include "modbus.h"
 #include "math.h"
 
@@ -41,15 +39,28 @@ char *(*ptrFuncRXBufferInit) (void);
 
 modbus_conf_t modbus_conf;
 
+static SemaphoreHandle_t modbusLocalSem;
+
+//------------------------------------------------------------------------------
+void modbus_init_outofrtos( SemaphoreHandle_t semph)
+{
+    modbusLocalSem = semph;
+}
 // -----------------------------------------------------------------------------
 void modbus_update_local_config( modbus_conf_t *modbus_system_conf)
 {
-    memcpy( modbus_system_conf, &modbus_conf, sizeof(modbus_conf_t));
+    while ( xSemaphoreTake( modbusLocalSem, ( TickType_t ) 5 ) != pdTRUE )
+  		vTaskDelay( ( TickType_t)( 1 ) );
+    memcpy( &modbus_conf, modbus_system_conf, sizeof(modbus_conf_t));
+    xSemaphoreGive( modbusLocalSem );
 }
 // -----------------------------------------------------------------------------
 void modbus_read_local_config( modbus_conf_t *modbus_system_conf)
 {
-    memcpy( &modbus_conf, modbus_system_conf, sizeof(modbus_conf_t)); 
+    while ( xSemaphoreTake( modbusLocalSem, ( TickType_t ) 5 ) != pdTRUE )
+  		vTaskDelay( ( TickType_t)( 1 ) );
+    memcpy( modbus_system_conf, &modbus_conf, sizeof(modbus_conf_t)); 
+    xSemaphoreGive( modbusLocalSem );
 }
 //------------------------------------------------------------------------------
 void modbus_init( int fd_modbus, int buffer_size, void (*f)(void), uint16_t (*g)(void), char *(*h)(void)  )

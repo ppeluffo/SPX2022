@@ -9,6 +9,20 @@
  * crear un projecto con todos los perifericos que usemos y bajar el codigo
  * para ver como se inicializan y se manejan.
  * 
+ * 
+ * -----------------------------------------------------------------------------
+ * Version 1.1.0 @ 2023-07-21
+ * Veo que hay veces que se cuelga o que tareas ocupan mas tiempo del esperable.
+ * Esto se refleja en el flasheo del led e indica problemas con la asignacion de
+ * tareas.
+ * https://www.freertos.org/FreeRTOS_Support_Forum_Archive/December_2013/freertos_configUSE_TIME_SLICING_278999daj.html
+ * https://www.freertos.org/FreeRTOS_Support_Forum_Archive/February_2018/freertos_Preemption_by_an_equal_priority_task_c8cb93d0j.html
+ * 
+ * #define configUSE_TIME_SLICING 1
+ * 
+ * El problema esta en la funcion FLASH_0_read_eeprom_block.
+ * La solución fue poner vTaskDelay( ( TickType_t)( 10 ) ) ente c/escritura de bytes.
+ * 
  * -----------------------------------------------------------------------------
  * Version 1.0.0 @ 2022-09-12
   * 
@@ -79,7 +93,7 @@
 
 #include "spx2022.h"
 
-/*
+
 FUSES = {
 	.WDTCFG = 0x00, // WDTCFG {PERIOD=OFF, WINDOW=OFF}
 	.BODCFG = 0x00, // BODCFG {SLEEP=DISABLE, ACTIVE=DISABLE, SAMPFREQ=128Hz, LVL=BODLEVEL0}
@@ -91,9 +105,8 @@ FUSES = {
 };
 
 LOCKBITS = 0x5CC5C55C; // {KEY=NOLOCK}
-*/
 
-
+/*
 FUSES = {
 	.WDTCFG = 0x0B, // WDTCFG {PERIOD=8KCLK, WINDOW=OFF}
 	.BODCFG = 0x00, // BODCFG {SLEEP=DISABLE, ACTIVE=DISABLE, SAMPFREQ=128Hz, LVL=BODLEVEL0}
@@ -105,9 +118,7 @@ FUSES = {
 };
 
 LOCKBITS = 0x5CC5C55C; // {KEY=NOLOCK}
-
-
-
+*/
 //------------------------------------------------------------------------------
 int main(void) {
 
@@ -122,6 +133,17 @@ int main(void) {
     
     sem_SYSVars = xSemaphoreCreateMutexStatic( &SYSVARS_xMutexBuffer );
     FS_init();
+    
+    ainputs_init_outofrtos(sem_SYSVars);
+    counters_init_outofrtos(sem_SYSVars);
+    modbus_init_outofrtos(sem_SYSVars);
+
+
+#ifdef PILOTO
+    piloto_init_outofrtos(sem_SYSVars);
+    piloto_init();
+#endif
+    
     starting_flag = false;
     
     xHandle_tkCtl = xTaskCreateStatic( tkCtl, "CTL", tkCtl_STACK_SIZE, (void *)1, tkCtl_TASK_PRIORITY, tkCtl_Buffer, &tkCtl_Buffer_Ptr );
@@ -129,7 +151,7 @@ int main(void) {
     xHandle_tkSys = xTaskCreateStatic( tkSystem, "SYS", tkSys_STACK_SIZE, (void *)1, tkSys_TASK_PRIORITY, tkSys_Buffer, &tkSys_Buffer_Ptr );
     xHandle_tkRS485A = xTaskCreateStatic( tkRS485A, "COMMSA", tkRS485A_STACK_SIZE, (void *)1, tkRS485A_TASK_PRIORITY, tkRS485A_Buffer, &tkRS485A_Buffer_Ptr );
     xHandle_tkRS485B = xTaskCreateStatic( tkRS485B, "COMMSB", tkRS485B_STACK_SIZE, (void *)1, tkRS485B_TASK_PRIORITY, tkRS485B_Buffer, &tkRS485B_Buffer_Ptr );
-    xHandle_tkWAN = xTaskCreateStatic( tkWAN, "WAN", tkWAN_STACK_SIZE, (void *)1, tkWAN_TASK_PRIORITY, tkWAN_Buffer, &tkWAN_Buffer_Ptr );
+ //   xHandle_tkWAN = xTaskCreateStatic( tkWAN, "WAN", tkWAN_STACK_SIZE, (void *)1, tkWAN_TASK_PRIORITY, tkWAN_Buffer, &tkWAN_Buffer_Ptr );
  
 #ifdef PILOTO
     xHandle_tkPILOTO = xTaskCreateStatic( tkPiloto, "PLT", tkPILOTO_STACK_SIZE, (void *)1, tkPILOTO_TASK_PRIORITY, tkPILOTO_Buffer, &tkPILOTO_Buffer_Ptr );

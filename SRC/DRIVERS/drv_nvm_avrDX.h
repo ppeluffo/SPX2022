@@ -13,7 +13,8 @@ extern "C" {
 #endif
 
 #include <compiler.h>
-
+#include "FreeRTOS.h"
+    
 #define BOOTLOADER_SECTION __attribute__((section(".bootloader")))
 
 #ifdef __cplusplus

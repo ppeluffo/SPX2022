@@ -84,21 +84,26 @@ void FLASH_0_read_eeprom_block(eeprom_adr_t eeprom_adr, uint8_t *data, size_t si
  */
 nvmctrl_status_t FLASH_0_write_eeprom_block(eeprom_adr_t eeprom_adr, uint8_t *data, size_t size)
 {
+    
 	uint8_t *write = (uint8_t *)(EEPROM_START + eeprom_adr);
-
+    
 	/* Wait for completion of previous operation */
 	while (NVMCTRL.STATUS & (NVMCTRL_EEBUSY_bm | NVMCTRL_FBUSY_bm))
 		;
 
 	/* Program the EEPROM with desired value(s) */
 	ccp_write_spm((void *)&NVMCTRL.CTRLA, NVMCTRL_CMD_EEERWR_gc);
-
+   
 	do {
 		/* Write byte to EEPROM */
 		*write++ = *data++;
 		size--;
+        
+        vTaskDelay( ( TickType_t)( 10 ) );
+        
 	} while (size != 0);
 
+            
 	/* Clear the current command */
 	ccp_write_spm((void *)&NVMCTRL.CTRLA, NVMCTRL_CMD_NONE_gc);
 

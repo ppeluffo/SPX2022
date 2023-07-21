@@ -51,6 +51,7 @@ typedef struct {
     ainputs_channel_conf_t channel[NRO_ANALOG_CHANNELS];
 } ainputs_conf_t;
 
+void ainputs_init_outofrtos( SemaphoreHandle_t semph);
 void ainputs_update_local_config( ainputs_conf_t *ainputs_system_conf);
 void ainputs_read_local_config( ainputs_conf_t *ainputs_system_conf);
 void ainputs_init(uint8_t samples_count);
@@ -67,6 +68,10 @@ void ainputs_apagar_sensores(void);
 bool ainputs_test_read_channel( uint8_t ch );
 void ainputs_config_debug(bool debug );
 bool ainputs_read_debug(void);
+uint8_t ainputs_hash( void );
+
+void AINPUTS_ENTER_CRITICAL(void);
+void AINPUTS_EXIT_CRITICAL(void);
 
 #ifdef	__cplusplus
 }

@@ -28,8 +28,6 @@ void tkPiloto(void * pvParameters)
 	vTaskDelay( ( TickType_t)( 500 / portTICK_PERIOD_MS ) );
     xprintf_P(PSTR("Starting tkPiloto..\r\n"));
         
-    piloto_init();
-    
 	for( ;; )
 	{
         /*
@@ -37,7 +35,7 @@ void tkPiloto(void * pvParameters)
          * que se realmacene la orden de un mismo tslot
          * 
          */
-		vTaskDelay( ( TickType_t)( 30000 / portTICK_PERIOD_MS ) );
+		vTaskDelay( ( TickType_t)( 15000 / portTICK_PERIOD_MS ) );
         
         if ( ! piloto_configurado())
             continue;
