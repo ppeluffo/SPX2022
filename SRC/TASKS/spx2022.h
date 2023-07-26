@@ -91,7 +91,7 @@ extern "C" {
 #include "piloto.h"
 
 #define FW_REV "1.1.0"
-#define FW_DATE "@ 20230721"
+#define FW_DATE "@ 20230726"
 #define HW_MODELO "SPX2022 FRTOS R001 HW:AVR128DA64"
 #define FRTOS_VERSION "FW:FreeRTOS V202111.00"
 #define FW_TYPE "SPXR3"
@@ -111,8 +111,8 @@ extern "C" {
 #define tkSys_STACK_SIZE		384
 #define tkRS485A_STACK_SIZE		384
 #define tkRS485B_STACK_SIZE		384
-#define tkWAN_STACK_SIZE		384
-#define tkPILOTO_STACK_SIZE		384
+#define tkWAN_STACK_SIZE        384
+#define tkPILOTO_STACK_SIZE		512
 
 #define PILOTO
 
@@ -211,6 +211,7 @@ void WAN_print_configuration(void);
 void WAN_config_debug(bool debug );
 bool WAN_read_debug(void);
 void WAN_put(uint8_t c);
+void WAN_kill_task(void);
 
 void MODBUS_flush_RXbuffer(void);
 uint16_t MODBUS_getRXCount(void);
@@ -264,8 +265,9 @@ uint8_t sys_watchdog;
 #define XCMA_WDG_bp   2
 #define XCMB_WDG_bp   3
 #define XWAN_WDG_bp   4
-#define PLT_WDG_bp    5 // No habilitado
+#define PLT_WDG_bp    5
 
+// No habilitado PLT_WDG !!!
 #define WDG_bm 0x1F 
 
 #define WDG_INIT() ( sys_watchdog = WDG_bm )

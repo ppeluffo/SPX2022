@@ -44,6 +44,25 @@ void stepper_TimerCallback( TimerHandle_t xTimer )
         motor_running = false;
 		xTimerStop( xTimer, 10 );
 	}
+    
+    // Controlo los fin de carrera
+    /*
+    if ( (cb_steps % 10) == 0 ) {
+        if ( FC_alta_read() == 0 ) {
+            xTimerStop( stepper_xTimer, 10 );
+            DRV8814_sleep();
+            xprintf_P(PSTR("Steppers: STOP X FIN DE CARRERA ALTA.\r\n"));
+            return;
+        }
+        
+        if ( FC_baja_read() == 0 ) {
+            xTimerStop( stepper_xTimer, 10 );
+            DRV8814_sleep();
+            xprintf_P(PSTR("Steppers: STOP X FIN DE CARRERA BAJA.\r\n"));
+            return;
+        }
+    }
+     */
 
 }
 //------------------------------------------------------------------------------
@@ -116,7 +135,6 @@ void stepper_move( t_stepper_dir dir, uint16_t npulses, uint16_t dtime, uint16_t
 	DRV8814_awake();
 	vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
 
-    
 	// Pongo la secuencia incial en 2 para que puede moverme para adelante o atras
 	// sin problemas de incializacion
 	//stepper_init_sequence();
@@ -127,21 +145,9 @@ void stepper_move( t_stepper_dir dir, uint16_t npulses, uint16_t dtime, uint16_t
     motor_running = true;
     xTimerChangePeriod(stepper_xTimer, ( ptime * 2) / portTICK_PERIOD_MS , 10 );
 	xTimerStart( stepper_xTimer, 10 );
-    while(motor_running) {
-        vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
-        // Controlo fines de carrera
-        if ( ( FC1_read() == 0 ) || ( FC2_read() == 0) ) {
-            xTimerStop( stepper_xTimer, 10 );
-            xprintf_P(PSTR("Steppers: STOP X FIN DE CARRERA.\r\n"));
-            // Rollback
-            stepper_rollback();
-            break;
-        }
-    
-    }
     
 	// Desactivo el driver
-	DRV8814_sleep();
+	//DRV8814_sleep();
 }
 //------------------------------------------------------------------------------
 void stepper_rollback(void) 
@@ -200,6 +206,11 @@ uint16_t dtime = atoi(s_dtime);
 uint16_t ptime = atoi(s_ptime);
 
 
+    if (!strcmp_P( strupr(s_cmd), PSTR("STOP"))) {
+        stepper_stop();
+        return(true);
+    }
+
     if (!strcmp_P( strupr(s_cmd), PSTR("AWAKE"))) {
         DRV8814_awake();
         return(true);
@@ -247,5 +258,17 @@ uint16_t ptime = atoi(s_ptime);
     
     return(false);
 
+}
+//------------------------------------------------------------------------------
+void stepper_stop(void)
+{
+    motor_running = false;
+    xTimerStop( stepper_xTimer, 10 );
+    DRV8814_sleep();
+}
+//------------------------------------------------------------------------------
+bool stepper_is_running(void)
+{
+    return motor_running;
 }
 //------------------------------------------------------------------------------

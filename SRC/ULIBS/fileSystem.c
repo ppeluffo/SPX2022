@@ -48,7 +48,12 @@ quit:
 //------------------------------------------------------------------------------
 void FAT_read( fat_s *dstfat)
 {
+    while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
+		vTaskDelay( ( TickType_t)( 1 ) );
+    
     memcpy( dstfat, &FAT, sizeof(fat_s));
+    
+    xSemaphoreGive( sem_FAT);
 }
 //------------------------------------------------------------------------------
 bool FS_open(void)

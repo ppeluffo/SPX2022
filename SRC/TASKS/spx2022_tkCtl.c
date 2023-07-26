@@ -83,11 +83,11 @@ void sys_watchdog_check(void)
     // Cada tarea debe poner su bit en 0. Si alguna no puede, se resetea
     // Esta funcion se corre cada 5s (TKCTL_DELAY_S)
     
-static uint8_t wdg_count = 0;
+static uint16_t wdg_count = 0;
 
     //xprintf_P(PSTR("wdg reset\r\n"));
     //wdt_reset();
-    return;
+    //return;
         
     // EL wdg lo leo cada 120secs ( 5 x 60 )
     if ( wdg_count++ <  (240 / TKCTL_DELAY_S ) ) {
@@ -95,7 +95,7 @@ static uint8_t wdg_count = 0;
         return;
     }
     
-    xprintf_P(PSTR("DEBUG: wdg check\r\n"));
+    //xprintf_P(PSTR("DEBUG: wdg check\r\n"));
     wdg_count = 0;
     
     // Analizo los watchdows individuales

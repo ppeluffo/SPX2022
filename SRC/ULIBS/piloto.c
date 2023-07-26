@@ -8,9 +8,11 @@
 float consigna;
 
 #define INTERVALO_ENTRE_MUESTRAS_SECS 5
-#define NRO_MUESTRAS    5
-#define MAX_INTENTOS_AJUSTE 5
+#define NRO_MUESTRAS            3
+#define MAX_INTENTOS_AJUSTE     5
 #define DPRES_X_REV				0.500		// 500 gr c/rev del piloto
+#define DELTA_PRES_MIN          0.075      //  50 grs de diferencia
+#define TIEMPO_ESPERA_AJUSTE    15000
 
 static bool f_debug_piloto = false;
 
@@ -44,7 +46,7 @@ int8_t piloto_leer_slot_actual( void );
 bool FSM_ajuste_presion( void );
 void plt_read_inputs( int8_t samples, uint16_t intervalo_secs );
 bool plt_condiciones_para_ajustar(void);
-void plt_ajustar_presion(void);
+bool plt_ajustar_presion(void);
 
 static SemaphoreHandle_t pilotoLocalSemph;
 
@@ -82,7 +84,11 @@ bool piloto_configurado(void)
      * Indica si en la confiugracion está indicado que hay un piloto
      */
     
-    return(true);
+    if ( piloto_conf.enabled ) {
+        return (true);
+    } else {
+        return (false); 
+    }
 }
 //------------------------------------------------------------------------------
 void piloto_init(void)
@@ -124,7 +130,7 @@ void piloto_consumidor(void)
 	 */
 
     if (f_debug_piloto) {
-        xprintf_P( PSTR("PILOTO CONS: start.\r\n"));
+    //    xprintf_P( PSTR("PILOTO CONS: start.\r\n"));
     }
  
 	if ( consigna > 0 ) { 
@@ -140,7 +146,7 @@ void piloto_consumidor(void)
     }
     
     if (f_debug_piloto) {
-        xprintf_P( PSTR("PILOTO CONS: end.\r\n"));
+    //    xprintf_P( PSTR("PILOTO CONS: end.\r\n"));
     }
     return;
 }
@@ -171,9 +177,9 @@ uint8_t state;
                 if (f_debug_piloto) {
                     xprintf_P( PSTR("PILOTO FSMajuste: state READ_INPUTS\r\n"));
                     // Espero siempre 30s antes para que se estabilizen. Sobre todo en valvulas grandes
-                    xprintf_P( PSTR("PILOTO FSMajuste: await 30s\r\n"));
+                    xprintf_P( PSTR("PILOTO FSMajuste: await %ds\r\n"), TIEMPO_ESPERA_AJUSTE / 1000);
                 }
-                vTaskDelay( ( TickType_t) (30000 / portTICK_PERIOD_MS ) );
+                vTaskDelay( ( TickType_t) (TIEMPO_ESPERA_AJUSTE / portTICK_PERIOD_MS ) );
                 plt_read_inputs( NRO_MUESTRAS, INTERVALO_ENTRE_MUESTRAS_SECS );
                 state = PLT_CHECK_CONDITIONS4ADJUST;
                 break;
@@ -190,9 +196,12 @@ uint8_t state;
             break;
         
             case PLT_AJUSTE:
-                plt_ajustar_presion();
-                state = PLT_READ_INPUTS;
-                break;
+                if ( plt_ajustar_presion() ) {
+                    state = PLT_READ_INPUTS;
+                } else {
+                    return(false);
+                }
+            break;
             
             default:
                 xprintf_P(PSTR("PILOTO FSM STATE ERROR: Reset FSM\r\n"));
@@ -217,12 +226,9 @@ float mag;
 uint16_t raw;
 
 	// Mido pA/pB
-	PLTCB.pA = 0;
-	PLTCB.pB = 0;
-   
-    
-    AINPUTS_ENTER_CRITICAL();
-    
+	PLTCB.pA = 0.0;
+	PLTCB.pB = 0.0;
+      
     ainputs_prender_sensores();
     
 	for ( i = 0; i < samples; i++) {
@@ -243,11 +249,11 @@ uint16_t raw;
 	}
     
     ainputs_apagar_sensores();
-
-    AINPUTS_EXIT_CRITICAL();
     
 	PLTCB.pA /= samples;
 	PLTCB.pB /= samples;
+    //PLTCB.pA = 5;
+	//PLTCB.pB = 1.5;
     if (f_debug_piloto) {
         xprintf_P(PSTR("PILOTO READINPUTS: pA=%.02f, pB=%.02f\r\n"), PLTCB.pA, PLTCB.pB );
     }
@@ -260,82 +266,116 @@ bool plt_condiciones_para_ajustar(void)
      * Revisa si las condiciones permiten ajsutar al piloto
      */
     if (f_debug_piloto) {
-        xprintf_P(PSTR("PILOTO FSMajuste: pA=%0.3f\r\n"),PLTCB.pA);
-        xprintf_P(PSTR("                  pB=%0.3f\r\n"),PLTCB.pB);
-        xprintf_P(PSTR("                  pRef=%0.3f\r\n"),PLTCB.pRef);
-        xprintf_P(PSTR("                  loops=%d\r\n"),PLTCB.loops);
+        xprintf_P(PSTR("PILOTO condXajuste: pA=%0.3f\r\n"),PLTCB.pA);
+        xprintf_P(PSTR("                    pB=%0.3f\r\n"),PLTCB.pB);
+        xprintf_P(PSTR("                    pRef=%0.3f\r\n"),PLTCB.pRef);
+        xprintf_P(PSTR("                    delta=%0.3f\r\n"), fabs(PLTCB.pRef - PLTCB.pB) );
+        xprintf_P(PSTR("                    loops=%d\r\n"),PLTCB.loops);
+        if (FC_alta_read() == 1) {
+           xprintf_P(PSTR("                    FC_alta=open\r\n"));
+        } else {
+           xprintf_P(PSTR("                    FC_alta=close(tope)\r\n"));
+        }
+        if (FC_baja_read() == 1) {
+           xprintf_P(PSTR("                    FC_baja=open\r\n"));
+        } else {
+           xprintf_P(PSTR("                    FC_baja=close(tope)\r\n"));
+        }        
     }
     
+    // La presion llego a la banda
+    if ( fabs( PLTCB.pB - PLTCB.pRef ) < DELTA_PRES_MIN ) {
+        if (f_debug_piloto) {
+            xprintf_P( PSTR("PILOTO condXajuste EXIT: pRef in Band !!\r\n"));
+        }
+        return(false);        
+    }
+    
+    // Nro intentos
     if ( PLTCB.loops >= MAX_INTENTOS_AJUSTE ) {
         if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste_cond: Max.intentos !!\r\n"));
+            xprintf_P( PSTR("PILOTO condXajuste EXIT: Max.intentos !!\r\n"));
         }
         return (false);
     }
             
+    // Las presiones debe ser todas positivas.
     if ( PLTCB.pA <= 0) {
         if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste_cond: pA < 0 !!\r\n"));
+            xprintf_P( PSTR("PILOTO condXajuste EXIT: pA < 0 !!\r\n"));
         }
         return (false);
     }
-
-    if ( PLTCB.pRef > PLTCB.pA ) {
+    
+    if ( PLTCB.pB <= 0) {
         if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste_cond: pRef > pA !!\r\n"));
+            xprintf_P( PSTR("PILOTO condXajuste EXIT: pB < 0 !!\r\n"));
         }
-        return(false);
+        return (false);
     }
     
     if ( PLTCB.pRef <= 0 ) {
         if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste_cond: pRef < 0 !!\r\n"));
+            xprintf_P( PSTR("PILOTO condXajuste EXIT: pRef < 0 !!\r\n"));
         }
         return (false);
     }
     
-    if ( fabs(PLTCB.pA - PLTCB.pRef) < 0.2 ) {
-        if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste_cond: abs(pA-pRef)<0.2 !!\r\n"));
+    // Si tengo que subir la presion.
+    if ( PLTCB.pRef > PLTCB.pB) {
+        //  FC_alta == 0: no puedo.
+        if ( FC_alta_read() == 0) {
+            if (f_debug_piloto) {
+                xprintf_P( PSTR("PILOTO condXajuste EXIT: FC_alta=close !!\r\n"));
+            }
+            return(false);
         }
-        return(false);
-    }
-    
-    if ( fabs( PLTCB.pB - PLTCB.pRef) < 0.2) {
-        if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste_cond: abs(pB-pRef)<0.2 !!\r\n"));
+        
+        // La presión baja ya está en el limite. No hay espacio para aumentar
+        /*
+        if ( fabs(PLTCB.pA - PLTCB.pB) < DELTA_PRES_MIN ) {
+            if (f_debug_piloto) {
+                xprintf_P( PSTR("PILOTO FSMajuste_cond: abs(pA-pRef)<0.2 !!\r\n"));
+            }
+            return(false);
         }
-        return(false);
+         */ 
     }
-    
-    // Si tengo que subir la presion y el FCsuperior == 0 no puedo.
-    // FC1 es alta
-    if ( (PLTCB.pRef > PLTCB.pB) && (FC1_read() == 0) ) {
-        if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste_cond: FC1=0 !!\r\n"));
+        
+    // Si tengo que bajar la presion
+    if ( PLTCB.pRef < PLTCB.pB ) {
+        //  FC_baja == 0: no puedo.
+        if (FC_baja_read() == 0 ) {
+            if (f_debug_piloto) {
+                xprintf_P( PSTR("PILOTO condXajuste EXIT: FC_baja=close !!\r\n"));
+            }
+            return(false);
         }
-        return(false);
-    }
-    
-    // Si tengo que bajar la presion y FCinferior == 0, no puedo
-    // FC2 es baja
-    if ( (PLTCB.pRef < PLTCB.pB) && (FC2_read() == 0 ) ) {
-        if (f_debug_piloto) {
-            xprintf_P( PSTR("PILOTO FSMajuste_cond: FC2=0 !!\r\n"));
+        
+        /*
+        if ( PLTCB.pB < 0.5 ) {
+            if (f_debug_piloto) {
+                xprintf_P( PSTR("PILOTO FSMajuste_cond: pB < 0.5 !!\r\n"));
+            }
+            return(false);
         }
-        return(false);
+         */
     }
-    
+       
     return(true);
 }
 //------------------------------------------------------------------------------
-void plt_ajustar_presion(void)
+bool plt_ajustar_presion(void)
 {
     /*
      * Calculamos los parametros de ajuste: direccion, pulsos
      */
     
 float delta_pres = 0.0;
+
+    if (f_debug_piloto) {
+        xprintf_P( PSTR("PILOTO AJUSTE.\r\n"));
+    }
 
 	if ( PLTCB.pB < PLTCB.pRef ) {
 		// Debo aumentar pB o sxprintf_P(PSTR("PILOTO: npulses=%d\r\n"), spiloto.npulses);ea apretar el tornillo (FWD)
@@ -367,11 +407,32 @@ float delta_pres = 0.0;
     }
     
     PLTCB.loops++;
-    stepper_move( PLTCB.dir, PLTCB.steps, piloto_conf.pWidth, 25 );
+    stepper_move( PLTCB.dir, PLTCB.steps, piloto_conf.pWidth, 15 );
+    
+    while( stepper_is_running()) {
+        
+        // Controlo los fin de carrera
+        // Ajusto al alta
+        if ( ( FC_alta_read() == 0 ) && ( PLTCB.pRef > PLTCB.pB) ) {
+            stepper_stop();
+            xprintf_P(PSTR("PILOTO AJUSTE: STOP X FIN DE CARRERA ALTA.\r\n"));
+            return(false);
+        }
+        
+        // Ajuste a la baja
+        if ( ( FC_baja_read() == 0 ) && ( PLTCB.pRef < PLTCB.pB ) ) {
+            stepper_stop();
+            xprintf_P(PSTR("PILOTO AJUSTE: STOP X FIN DE CARRERA BAJA.\r\n"));
+            return(false);
+        }
+        
+        vTaskDelay( ( TickType_t)( 1000 / portTICK_PERIOD_MS ) );
+    }
+    
+    return(true);
     
 }
 //------------------------------------------------------------------------------
-
 /*
  Handlers de Productor
  */
@@ -389,7 +450,7 @@ static int8_t slot0 = -1;
 int8_t slot_now = -1;
 
     if (f_debug_piloto) {
-        xprintf_P(PSTR("PILOTO PROD: start.\r\n"));
+    //    xprintf_P(PSTR("PILOTO PROD: start.\r\n"));
     }
 
     slot_now = piloto_leer_slot_actual();
@@ -414,7 +475,7 @@ int8_t slot_now = -1;
 quit:
         
     if (f_debug_piloto) {
-        xprintf_P(PSTR("PILOTO PROD: end.\r\n"));    
+    //    xprintf_P(PSTR("PILOTO PROD: end.\r\n"));    
     }
 }
 //------------------------------------------------------------------------------
@@ -494,6 +555,8 @@ int8_t slot;
 	xprintf_P( PSTR(" pPulsosXrev=%d, pWidth=%d(ms)\r\n"), piloto_conf.pulsesXrev, piloto_conf.pWidth  );
     xprintf_P( PSTR(" ch_pA=%d, ch_pB=%d\r\n"), piloto_conf.ch_pA, piloto_conf.ch_pB);
 	xprintf_P( PSTR(" Slots:\r\n"));
+    slot = piloto_leer_slot_actual();
+    xprintf_P( PSTR(" pos=%02d, pRef=%0.2f\r\n"), slot, piloto_conf.pltSlots[slot].presion );
 	xprintf_P( PSTR(" "));
 	for (slot=0; slot < (MAX_PILOTO_PSLOTS / 2);slot++) {
 		xprintf_P( PSTR("[%02d]%02d->%0.2f "), slot, piloto_conf.pltSlots[slot].pTime,piloto_conf.pltSlots[slot].presion  );
@@ -657,9 +720,9 @@ int8_t i;
 quit:
         
     xSemaphoreGive( pilotoLocalSemph );
-    if (f_debug_piloto) {
-        xprintf_P(PSTR("PILOTO: Slot actual=%d\r\n"), slot_actual);
-    }
+    //if (f_debug_piloto) {
+    //    xprintf_P(PSTR("PILOTO: Slot actual=%d\r\n"), slot_actual);
+    //}
     return(slot_actual);    
 
 }     

@@ -1,7 +1,7 @@
 #include "spx2022.h"
 #include "frtos_cmd.h"
 #include "modbus.h"
-
+        
 SemaphoreHandle_t sem_WAN;
 StaticSemaphore_t WAN_xMutexBuffer;
 #define MSTOTAKEWANSEMPH ((  TickType_t ) 10 )
@@ -70,6 +70,7 @@ static bool wan_check_response ( const char *s);
 static void wan_xmit_out(bool debug_flag );
 static void wan_print_RXbuffer(void);
 
+fat_s l_fat1;
 
 //------------------------------------------------------------------------------
 void tkWAN(void * pvParameters)
@@ -308,8 +309,7 @@ bool res;
 // ENTRY:
     
     // Si hay datos en memoria los transmito todos y los borro en bloques de a 8
-    xprintf_P(PSTR("WAN:: ONLINE: dump memory...\r\n"));
-    
+    xprintf_P(PSTR("WAN:: ONLINE: dump memory...\r\n"));  
     // Vacio la memoria.
     wan_send_from_memory();  
     // 
@@ -322,7 +322,10 @@ bool res;
     
     // En modo continuo me quedo esperando por datos para transmitir. 
     while( wan_check_pwr_modo_now() == PWR_CONTINUO ) {
-                   
+              
+        //FAT_read(&l_fat1);
+        //xprintf_P( PSTR("WAN D:: wrPtr=%d,rdPtr=%d,count=%d\r\n"), l_fat1.head, l_fat1.tail, l_fat1.count );
+        
         // Hay datos para transmitir
         if ( drWanBuffer.dr_ready ) {
             res =  wan_process_frame_data( &drWanBuffer.dr);
@@ -1328,9 +1331,9 @@ static bool wan_send_from_memory(void)
     
 dataRcd_s dr;
 bool retS = false;
-fat_s l_fat;
 
     xprintf_P(PSTR("WAN:: Dump memory...\r\n"));
+    /*
     while ( FS_readRcd( &dr, sizeof(dataRcd_s) )) {
         
         retS = wan_process_frame_data(&dr);
@@ -1339,13 +1342,34 @@ fat_s l_fat;
         }
         
         FAT_read(&l_fat);
-        xprintf_P( PSTR("Mem: wrPtr=%d,rdPtr=%d,count=%d\r\n"),l_fat.head,l_fat.tail, l_fat.count );
+        xprintf_P( PSTR("Mem: wrPtr=%d,rdPtr=%d,count=%d\r\n"),l_fat.head, l_fat.tail, l_fat.count );
 
     }
-    retS = true;
+     */
+    
+    FAT_read(&l_fat1);
+    xprintf_P( PSTR("WAN:: wrPtr=%d,rdPtr=%d,count=%d\r\n"), l_fat1.head, l_fat1.tail, l_fat1.count );
+    
+    while ( l_fat1.count > 0 ) {
+        xprintf_P( PSTR("WAN: wrPtr=%d,rdPtr=%d,count=%d\r\n"),l_fat1.head, l_fat1.tail, l_fat1.count );
+        
+        if ( FS_readRcd( &dr, sizeof(dataRcd_s) ) ) {
+            retS = wan_process_frame_data(&dr);
+            if ( ! retS) {
+                goto quit;
+            }
+        } else {
+            goto quit;
+        }
+        
+        FAT_read(&l_fat1);
+    }
     
 quit:
+                
     xprintf_P(PSTR("WAN:: Memory Empty\r\n"));
+    //FAT_flush();
+    
     return (retS);
 
 
@@ -1363,10 +1387,14 @@ uint8_t tryes = 0;
 uint8_t timeout = 0;
 bool retS = false;
 
-    xprintf_P(PSTR("WAN:: DATA.\r\n"));
+    if (f_debug_comms) {
+        xprintf_P(PSTR("WAN:: DATA.\r\n"));
+    }
 
     while ( xSemaphoreTake( sem_WAN, MSTOTAKEWANSEMPH ) != pdTRUE )
         vTaskDelay( ( TickType_t)( 1 ) );
+    
+    //goto exit_;
     
     // Guardo el DR trasmitido en memoria para compararlo y ver si se disparan alarmas.
     // En dataRcd_previo tengo el ultimo dato transmitido !!!.
@@ -1570,7 +1598,9 @@ static void wan_print_RXbuffer(void)
 char *p;
             
     p = lBchar_get_buffer(&wan_lbuffer);
-    xprintf_P(PSTR("Rcvd-> %s\r\n"), p );
+    //if (f_debug_comms) {
+        xprintf_P(PSTR("Rcvd-> %s\r\n"), p );
+    //}
 }
 //------------------------------------------------------------------------------
 //
@@ -1599,6 +1629,8 @@ fat_s l_fat;
          * Indico que hay un dato listo para enviar
          * Aviso (despierto) para que se transmita.
          */
+        //xprintf_P(PSTR("WAN:: New dataframe.\r\n"));
+        
         memcpy( &drWanBuffer.dr, dataRcd, sizeof(dataRcd_s));
         drWanBuffer.dr_ready = true;    
         // Aviso al estado online que hay un frame listo
@@ -1609,7 +1641,7 @@ fat_s l_fat;
         
     } else {
         // Guardo en memoria
-        xprintf_P(PSTR("WAN: Save frame in EE.\r\n"));
+        xprintf_P(PSTR("WAN:: Save frame in EE.\r\n"));
         retS = FS_writeRcd( dataRcd, sizeof(dataRcd_s) );
         if ( ! retS  ) {
             // Error de escritura o memoria llena ??
@@ -1682,5 +1714,15 @@ void wan_APAGAR_MODEM(void)
     xprintf_P(PSTR("WAN:: APAGAR MODEM\r\n"));
 }
 //------------------------------------------------------------------------------
-
-        
+void WAN_kill_task(void)
+{
+    // Mata la tarea pero deja todo ordenado para que
+    // los datos se guarden en memoria.
+    if ( xHandle_tkWAN != NULL ) {
+        vTaskSuspend( xHandle_tkWAN );
+        xHandle_tkWAN = NULL;
+        link_up4data = false;
+        wan_APAGAR_MODEM();
+    }
+}
+//------------------------------------------------------------------------------        

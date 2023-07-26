@@ -154,6 +154,8 @@ void VSENSORS420_init(void);
 
 uint8_t FC1_read(void);
 uint8_t FC2_read(void);
+#define FC_alta_read() FC1_read()
+#define FC_baja_read() FC2_read()
 void FCx_init(void);
 
 #ifdef	__cplusplus

@@ -71,7 +71,13 @@ static void cmdTestFunction(void)
     FRTOS_CMD_makeArgv();
 
 dataRcd_s dr;
+fat_s l_fat;
 
+    if (!strcmp_P( strupr(argv[1]), PSTR("FAT"))  ) {
+        FAT_read(&l_fat);
+        xprintf_P( PSTR("FAT:: wrPtr=%d,rdPtr=%d,count=%d\r\n"), l_fat.head, l_fat.tail, l_fat.count );
+        return;
+    }
 
     if (!strcmp_P( strupr(argv[1]), PSTR("DRV8814"))  ) {
         DRV8814_test(argv[2],argv[3])? pv_snprintfP_OK() : pv_snprintfP_ERR();
@@ -126,11 +132,8 @@ dataRcd_s dr;
     }
 
     if (!strcmp_P( strupr(argv[1]), PSTR("KILL"))  ) {
-        if (!strcmp_P( strupr(argv[2]), PSTR("WAN"))  ) {  
-            if ( xHandle_tkWAN != NULL ) {
-                vTaskSuspend( xHandle_tkWAN );
-                xHandle_tkWAN = NULL;
-            }
+        if (!strcmp_P( strupr(argv[2]), PSTR("WAN"))  ) { 
+            WAN_kill_task();
             return;
         }
         
@@ -247,7 +250,7 @@ static void cmdHelpFunction(void)
 		xprintf_P( PSTR("-read:\r\n"));
         xprintf_P( PSTR("  (ee,nvmee,rtcram) {pos} {lenght} {debug}\r\n"));
         xprintf_P( PSTR("  avrid,rtc {long,short}\r\n"));
-        xprintf_P( PSTR("  cnt {0,1}, fc1,fc2\r\n"));
+        xprintf_P( PSTR("  cnt {0,1}, fc1,fc_alta,fc2,fc_baja\r\n"));
         xprintf_P( PSTR("  ina {conf|chXshv|chXbusv|mfid|dieid}\r\n"));
         xprintf_P( PSTR("  rs485a, rs485b\r\n"));
         xprintf_P( PSTR("  ainput {n}\r\n"));
@@ -325,11 +328,22 @@ static void cmdReadFunction(void)
         xprintf_P(PSTR("FC1=%d\r\n"), FC1_read() );
         return;
     }
+
+    if (! strcmp_P( strupr(argv[1]), PSTR("FC_ALTA") ) ) {
+        xprintf_P(PSTR("FC_alta(1)=%d (1:open,0:close)\r\n"), FC1_read() );
+        return;
+    }
     
     if (! strcmp_P( strupr(argv[1]), PSTR("FC2") ) ) {
         xprintf_P(PSTR("FC2=%d\r\n"), FC2_read() );
         return;
     }
+    
+    if (! strcmp_P( strupr(argv[1]), PSTR("FC_BAJA") ) ) {
+        xprintf_P(PSTR("FC_baja(2)=%d (1:open,0:close)\r\n"), FC2_read() );
+        return;
+    }
+    
     
     // MEMORY
 	// read memory

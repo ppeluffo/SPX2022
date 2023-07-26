@@ -6,7 +6,7 @@
 // 1000 / 7.32 / 40 = 183 ;
 #define INA_FACTOR  183
 
-static bool sensores_prendidos = false;
+static int8_t sensores_prendidos = 0;
 
 static bool f_debug_ainputs;
 
@@ -366,15 +366,19 @@ void ainputs_read_channel ( uint8_t ch, float *mag, uint16_t *raw )
 
 uint16_t an_raw_val = 0;
 float an_mag_val = 0.0;
-t_ain_s rb_element;
-float avg;
-uint8_t i;
+//t_ain_s rb_element;
+//float avg;
+//uint8_t i;
 
+
+    AINPUTS_ENTER_CRITICAL();
+    
 	// Leo el valor del INA.(raw)
 	an_raw_val = ainputs_read_channel_raw( ch );
     // Lo convierto a la magnitud
     an_mag_val = ainputs_read_channel_mag( ch, an_raw_val);
     
+    /*
     // Lo almaceno en el RB correspondiente
     rb_element.ain = an_mag_val;
     switch(ch) {
@@ -413,9 +417,13 @@ uint8_t i;
     }
     avg /= max_rb_ain_storage_size;
     
+    */ 
+    
 	*raw = an_raw_val;
-	//*mag = an_mag_val;
-    *mag = avg;
+	*mag = an_mag_val;
+    //*mag = avg;
+    
+    AINPUTS_EXIT_CRITICAL();
 
 }
 //------------------------------------------------------------------------------
@@ -424,30 +432,59 @@ void ainputs_prender_sensores(void)
     /* 
      * Para ahorrar energia los canales se prenden cuando se necesitan y luego
      * se apagan
+     * El contador sensores_prendidos ( protegido con semaforo ) nos dice si
+     * esta prendido o no.
      */
 
 uint32_t sleep_time_ms;
+int8_t sp;
 
-    ainputs_awake();
-	//
-	if ( ! sensores_prendidos ) {
+	// Lo prendo virtualmente ( solo si estaba en 0 (apagado) y paso a 1 )
+    AINPUTS_ENTER_CRITICAL();
+    sensores_prendidos++;
+    sp = sensores_prendidos;
+    
+    if ( f_debug_ainputs ) {
+        xprintf_P( PSTR("AINPUTS Prender Sensores: count=%d\r\n") , sp );
+    }
+    
+    if ( sp == 1 ) {
+        // Prendo físicamente
+        ainputs_awake();
 		SET_VSENSORS420();
-		sensores_prendidos = true;
-		// Normalmente espero 1s de settle time que esta bien para los sensores
-		// pero cuando hay un caudalimetro de corriente, necesita casi 5s
-		// vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
-        sleep_time_ms = (uint32_t)PWRSENSORES_SETTLETIME_MS / portTICK_PERIOD_MS; 
-		vTaskDelay( ( TickType_t)sleep_time_ms );
 	}
+    
+    AINPUTS_EXIT_CRITICAL();
+    
+    // Normalmente espero 1s de settle time que esta bien para los sensores
+	// pero cuando hay un caudalimetro de corriente, necesita casi 5s
+	// vTaskDelay( ( TickType_t)( 1000 / portTICK_RATE_MS ) );
+    sleep_time_ms = (uint32_t)PWRSENSORES_SETTLETIME_MS / portTICK_PERIOD_MS; 
+    vTaskDelay( ( TickType_t)sleep_time_ms );
 }
 //------------------------------------------------------------------------------
 void ainputs_apagar_sensores(void)
 {
 
-	CLEAR_VSENSORS420();
-	sensores_prendidos = false;
-	ainputs_sleep();
+int8_t sp;
 
+    AINPUTS_ENTER_CRITICAL();
+    if ( sensores_prendidos > 0 ) {
+        sensores_prendidos--;
+    }
+    
+    sp = sensores_prendidos;
+    
+    if ( f_debug_ainputs ) {
+        xprintf_P( PSTR("AINPUTS Apagar Sensores: count=%d\r\n") , sp );
+    }
+    
+    // Solo cuando nadie lo esta usando, lo apago físicamente.
+    if ( sp == 0 ) {
+        CLEAR_VSENSORS420();
+        ainputs_sleep();
+    }
+    AINPUTS_EXIT_CRITICAL();
 }
 //------------------------------------------------------------------------------
 bool ainputs_test_read_channel( uint8_t ch )
@@ -457,6 +494,7 @@ float mag;
 uint16_t raw;
 
     if ( ( ch == 0 ) || (ch == 1 ) || ( ch == 2) || ( ch == 99)) {
+        
         ainputs_prender_sensores();
         ainputs_read_channel ( ch, &mag, &raw );
         xprintf_P(PSTR("AINPUT ch%d=%0.3f\r\n"), ch, mag);

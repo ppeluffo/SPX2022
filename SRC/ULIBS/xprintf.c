@@ -105,6 +105,8 @@ int xprintf_P( PGM_P fmt, ...)
 
 va_list args;
 int i;
+uint16_t size;
+
 
 	// Espero el semaforo del buffer en forma persistente.
 	while ( xSemaphoreTake( sem_STDOUT, ( TickType_t ) 5 ) != pdTRUE )
@@ -117,7 +119,8 @@ int i;
     va_end(args);
 	i = frtos_write(fdTERM, (char *)stdout_buff, strlen((char *)stdout_buff) );
 	// Espero que se vacie el buffer 10ms.
-    vTaskDelay( ( TickType_t)( 10 / portTICK_PERIOD_MS ) );
+    size = strlen((char *)stdout_buff) + 10;
+    vTaskDelay( ( TickType_t)( size  / portTICK_PERIOD_MS ) );
 
 	xSemaphoreGive( sem_STDOUT );
 	return(i);

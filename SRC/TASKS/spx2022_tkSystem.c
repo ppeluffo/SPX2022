@@ -49,8 +49,8 @@ uint8_t i;
         // Espero timerpoll ms.
         //waiting_ticks = (uint32_t)systemConf.timerpoll * 1000 / portTICK_PERIOD_MS;
         //vTaskDelayUntil( &xLastWakeTime, ( TickType_t)( waiting_ticks ));
-        
-        waiting_ticks = (uint32_t)systemConf.timerpoll * 1000 / portTICK_PERIOD_MS / 10;
+        // El poleo se lleva 5 secs.
+        waiting_ticks = (uint32_t) ( systemConf.timerpoll * 1000 - PWRSENSORES_SETTLETIME_MS )  / portTICK_PERIOD_MS / 10;
         for (i=0; i< 10; i++) {
             kick_wdt(SYS_WDG_bp);
             vTaskDelay( ( TickType_t)( waiting_ticks ) );
@@ -64,7 +64,7 @@ uint8_t i;
         xprint_dr(&dataRcd);
 
         // Vemos si algun valor excede el nivel de alarma
-        check_alarms(&dataRcd);
+        //check_alarms(&dataRcd);
 	}
 }
 //------------------------------------------------------------------------------
@@ -130,8 +130,6 @@ uint16_t raw;
 bool retS = false;
 
     // Prendo los sensores
-    AINPUTS_ENTER_CRITICAL();
-
     ainputs_prender_sensores();
                 
     // los valores publicados en el systemVars los leo en variables locales.
@@ -155,8 +153,7 @@ bool retS = false;
     }
     
     // Apago los sensores
-    ainputs_apagar_sensores();
-    AINPUTS_EXIT_CRITICAL();    
+    ainputs_apagar_sensores(); 
     
     // Leo el valor de los contadores
     counters_read( systemVars.counters );

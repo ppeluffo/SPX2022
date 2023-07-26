@@ -14,6 +14,7 @@ extern "C" {
 
 #include <compiler.h>
 #include "FreeRTOS.h"
+#include "task.h"
     
 #define BOOTLOADER_SECTION __attribute__((section(".bootloader")))
 
