@@ -17,6 +17,24 @@ bool fs_hard_write( char *buff, uint8_t buff_size, uint16_t ptr, uint8_t *cks );
 bool fs_hard_read( char *buff, uint8_t buff_size, uint16_t ptr, uint8_t *calc_cks, uint8_t *rd_cks);
 
 //#define DEBUG_FS
+void pv_fat_flush(void);
+//------------------------------------------------------------------------------
+void pv_fat_flush(void)
+{
+    
+int16_t xBytes;
+        
+	FAT.head = 0;	// start
+	FAT.tail = 0;	// end
+	FAT.count = 0;
+	FAT.length = FF_MAX_RCDS;
+    
+    xBytes = RTC_write( FAT_ADDRESS, (char *)&FAT, sizeof(fat_s) );
+	if ( xBytes == -1 ) {
+		xprintf_P(PSTR("ERROR: I2C:RTC:pv_fat_flush\r\n"));
+    }
+
+}
 //------------------------------------------------------------------------------
 bool FAT_flush(void)
 {
@@ -50,6 +68,17 @@ void FAT_read( fat_s *dstfat)
 {
     while ( xSemaphoreTake(sem_FAT, ( TickType_t ) 5 ) != pdTRUE )
 		vTaskDelay( ( TickType_t)( 1 ) );
+     
+    // 20230808: Si algun parametro es negativo, la reseteo.
+    // Cambio la fat de int_16 a uint_16
+
+    if ( ( FAT.count < 0) || ( FAT.head < 0 ) || ( FAT.length < 0) || (FAT.tail < 0) ) {
+        pv_fat_flush();
+    }
+    
+    if ( FAT.length > FF_MAX_RCDS ) {
+         pv_fat_flush();
+    }
     
     memcpy( dstfat, &FAT, sizeof(fat_s));
     
@@ -181,7 +210,15 @@ uint8_t calc_cks, rd_cks;
     }
 
     // Está todo bien. Ajusto los punteros.
-	FAT.count--;
+    if ( FAT.count > 0 ) {
+        FAT.count--;
+    } else {
+        // ERROR
+        xprintf_P(PSTR("ERROR: FAT count < 0 !!!. Flush.\r\n"));
+        pv_fat_flush();
+        goto quit;
+    }
+    
     next = FAT.tail + 1;
     if ( next >= FAT.length) {
         next = 0;

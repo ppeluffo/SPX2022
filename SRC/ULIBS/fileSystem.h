@@ -59,10 +59,10 @@ extern "C" {
  * Solo necesito el control ya que el buffer es la EEPROM
  */
 typedef struct {
-	int16_t head;
-	int16_t tail;
-	int16_t count;
-	int16_t length;
+	uint16_t head;
+	uint16_t tail;
+	uint16_t count;
+	uint16_t length;
 } fat_s;
 
 fat_s FAT;
